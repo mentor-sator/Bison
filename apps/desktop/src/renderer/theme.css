@@ -87,6 +87,17 @@
   }
 }
 
+@layer components {
+  .app-shell {
+    background-color: var(--color-base);
+    background-image:
+      radial-gradient(115% 85% at 6% -8%, rgba(150, 20, 32, 0.16), transparent 62%),
+      radial-gradient(85% 70% at 104% 108%, rgba(90, 12, 22, 0.1), transparent 70%);
+    background-attachment: fixed;
+    color: var(--color-ink-muted);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

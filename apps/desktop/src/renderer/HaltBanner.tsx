@@ -6,6 +6,7 @@ import {
   type HaltReason,
 } from "./halt";
 import type { HaltView } from "./useGateway";
+import { button, mark } from "./ui";
 
 interface HaltBannerProps {
   halt: HaltView;
@@ -25,11 +26,13 @@ export function HaltBanner({ halt }: HaltBannerProps) {
   const silent = report === null ? [] : silentServices(report);
 
   return (
-    <div className={`halt ${halted ? "halted" : "clear"}`}>
-      <div className="halt-head">
-        <span className="halt-label">{halted ? "halted" : "running"}</span>
+    <div className="flex flex-col gap-1.5 px-5 pb-3">
+      <div className="flex items-center gap-3">
+        <span className={`${mark.dot} ${halted ? "bg-status-wait" : "bg-status-ok"}`} />
 
-        <span className="halt-reason">
+        <span className="text-[13px] font-medium text-ink">{halted ? "Halted" : "Running"}</span>
+
+        <span className="text-[13px] text-ink-muted">
           {!halted
             ? "nothing is halted"
             : reason === null
@@ -38,36 +41,40 @@ export function HaltBanner({ halt }: HaltBannerProps) {
         </span>
 
         {halted && signal !== null && (
-          <span className="halt-issued">{new Date(signal.issued_at).toLocaleTimeString()}</span>
+          <span className="text-[11.5px] text-ink-faint tabular">
+            {new Date(signal.issued_at).toLocaleTimeString()}
+          </span>
         )}
 
-        <span className="halt-reach">
+        <span className="min-w-0 flex-1 truncate text-[13px] text-ink-faint">
           {report === null ? "checking services" : describeReach(report)}
         </span>
 
-        {halted ? (
-          <button type="button" className="halt-resume" disabled={pending} onClick={halt.resume}>
-            Resume
-          </button>
-        ) : (
-          <button type="button" className="halt-stop" disabled={pending} onClick={halt.stop}>
-            Stop
-          </button>
-        )}
+        <button
+          type="button"
+          className={button.halt}
+          disabled={pending}
+          onClick={halted ? halt.resume : halt.stop}
+        >
+          {halted ? "Resume" : "Stop"}
+        </button>
       </div>
 
-      {stopped.length > 0 && <div className="halt-services">stopped: {stopped.join(", ")}</div>}
+      {stopped.length > 0 && (
+        <p className="text-[13px] text-ink-muted">stopped: {stopped.join(", ")}</p>
+      )}
 
       {silent.length > 0 && (
-        <div className="halt-silent">
-          <span>no answer from {silent.join(", ")}</span>
-          <button type="button" className="halt-recheck" disabled={pending} onClick={halt.refresh}>
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] text-ink-muted">no answer from {silent.join(", ")}</span>
+
+          <button type="button" className={button.ghost} disabled={pending} onClick={halt.refresh}>
             Recheck
           </button>
         </div>
       )}
 
-      {halt.error !== null && <div className="halt-error">{halt.error}</div>}
+      {halt.error !== null && <p className="text-[13px] text-red-400">{halt.error}</p>}
     </div>
   );
 }

@@ -7,7 +7,9 @@ import { ModelPicker } from "./ModelPicker";
 import { ProjectBar } from "./ProjectBar";
 import { RoleBar } from "./RoleBar";
 import { RunPanel } from "./RunPanel";
+import { Shell } from "./Shell";
 import { TaskList } from "./TaskList";
+import markUrl from "./brand/mark-128.png";
 import type { Role } from "./broker";
 import type { TaskDraft } from "./tasks";
 import { useBindings } from "./useBindings";
@@ -114,64 +116,98 @@ export function App() {
   };
 
   return (
-    <div className="shell">
-      <div className="status">
-        <span className={`indicator ${state}`} />
-        <span>{state}</span>
-        <span className="detail">
-          {historyState === "loading" && "loading history"}
-          {historyState === "failed" && "history unavailable"}
-          {historyState === "ready" && `${messages.length} messages`}
-        </span>
-      </div>
+    <>
+      <Shell
+        topBar={
+          <>
+            <div className="flex items-center gap-4 px-5 py-3">
+              <img
+                src={markUrl}
+                alt=""
+                className="h-8 w-8 shrink-0 rounded-control border border-line-subtle"
+              />
 
-      <HaltBanner halt={halt} />
+              <div className="min-w-0 flex-1">
+                <ProjectBar projects={projects} />
+              </div>
 
-      <ProjectBar projects={projects} />
-
-      <CapabilityBar manifestState={manifestState} manifest={manifest} />
-
-      {projectId !== null && (
-        <>
-          <RoleBar bindingsState={bindingsState} bindings={bindings} onPick={setPickerRole} />
-
-          <TaskList tasksState={tasksState} tasks={tasks} progress={progress} onTransition={move} />
-
-          <AddTask onAdd={add} />
-
-          <RunPanel run={run} onStart={start} onConfirm={confirm} />
-        </>
-      )}
-
-      {taskError !== null && <div className="picker-error">{taskError}</div>}
-
-      <div className="stream">
-        {messages.map((message) => (
-          <div className="message" key={message.id}>
-            <div className="meta">
-              <span className="role">{message.role}</span>
-              <span className="time">{new Date(message.created_at).toLocaleTimeString()}</span>
+              <div className="flex shrink-0 items-center gap-2 text-[13px] text-ink-faint">
+                <span className={`indicator ${state}`} />
+                <span>{state}</span>
+                <span>
+                  {historyState === "loading" && "loading history"}
+                  {historyState === "failed" && "history unavailable"}
+                  {historyState === "ready" && `${messages.length} messages`}
+                </span>
+              </div>
             </div>
-            <div className="content">{message.content}</div>
+
+            <HaltBanner halt={halt} />
+          </>
+        }
+        sidebar={
+          <div className="flex flex-col gap-4 py-2">
+            {projectId !== null && (
+              <RoleBar bindingsState={bindingsState} bindings={bindings} onPick={setPickerRole} />
+            )}
+
+            <CapabilityBar manifestState={manifestState} manifest={manifest} />
           </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+        }
+        main={
+          <>
+            <div className="stream">
+              {messages.map((message) => (
+                <div className="message" key={message.id}>
+                  <div className="meta">
+                    <span className="role">{message.role}</span>
+                    <span className="time">
+                      {new Date(message.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="content">{message.content}</div>
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
 
-      <ActivityBar activity={activity} elapsedSeconds={elapsedSeconds} />
+            {projectId !== null && <RunPanel run={run} onStart={start} onConfirm={confirm} />}
 
-      <form className="composer" onSubmit={submit}>
-        <input
-          value={draft}
-          onChange={(changeEvent) => setDraft(changeEvent.target.value)}
-          placeholder={busy ? "waiting for the model" : "Send a message"}
-          disabled={busy}
-          autoFocus
-        />
-        <button type="submit" disabled={state !== "open" || busy}>
-          Send
-        </button>
-      </form>
+            {taskError !== null && <div className="picker-error">{taskError}</div>}
+
+            <ActivityBar activity={activity} elapsedSeconds={elapsedSeconds} />
+
+            <form className="composer" onSubmit={submit}>
+              <input
+                value={draft}
+                onChange={(changeEvent) => setDraft(changeEvent.target.value)}
+                placeholder={busy ? "waiting for the model" : "Send a message"}
+                disabled={busy}
+                autoFocus
+              />
+              <button type="submit" disabled={state !== "open" || busy}>
+                Send
+              </button>
+            </form>
+          </>
+        }
+        tracker={
+          projectId === null ? (
+            <p className="px-4 py-3 text-[13px] text-ink-faint">No project is active.</p>
+          ) : (
+            <div className="flex flex-col gap-3 py-2">
+              <TaskList
+                tasksState={tasksState}
+                tasks={tasks}
+                progress={progress}
+                onTransition={move}
+              />
+
+              <AddTask onAdd={add} />
+            </div>
+          )
+        }
+      />
 
       {pickerRole !== null && (
         <ModelPicker
@@ -184,6 +220,6 @@ export function App() {
           onClose={() => setPickerRole(null)}
         />
       )}
-    </div>
+    </>
   );
 }
