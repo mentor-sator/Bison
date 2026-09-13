@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config";
@@ -11,7 +11,8 @@ const createWindow = async (): Promise<void> => {
     width: 1280,
     height: 800,
     show: false,
-    backgroundColor: "#111111",
+    backgroundColor: "#0b0708",
+    icon: path.join(currentDir, "..", "..", "assets", "icon.ico"),
     webPreferences: {
       preload: path.join(currentDir, "preload.cjs"),
       contextIsolation: true,
@@ -43,6 +44,8 @@ const reportHalt = (result: HaltDispatch): void => {
 };
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+
   const hotkey = register(reportHalt);
 
   if (hotkey.accelerator === null) {
