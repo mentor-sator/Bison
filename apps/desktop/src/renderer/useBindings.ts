@@ -11,15 +11,19 @@ export interface BindingsView {
   refreshInstalled: () => Promise<void>;
 }
 
-export function useBindings(httpUrl: string): BindingsView {
+export function useBindings(httpUrl: string, projectId: string | null): BindingsView {
   const [bindingsState, setBindingsState] = useState<BindingsState>("loading");
   const [bindings, setBindings] = useState<RoleBinding[]>([]);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    if (projectId === null) {
+      return;
+    }
+
     let cancelled = false;
 
-    Promise.all([fetchBindings(httpUrl), fetchInstalled(httpUrl)])
+    Promise.all([fetchBindings(httpUrl, projectId), fetchInstalled(httpUrl)])
       .then(([loadedBindings, loadedInstalled]) => {
         if (cancelled) {
           return;
@@ -37,18 +41,22 @@ export function useBindings(httpUrl: string): BindingsView {
     return () => {
       cancelled = true;
     };
-  }, [httpUrl]);
+  }, [httpUrl, projectId]);
 
   const rebind = useCallback(
     async (role: Role, modelId: string) => {
-      const bound = await bindRole(httpUrl, role, modelId);
+      if (projectId === null) {
+        return;
+      }
+
+      const bound = await bindRole(httpUrl, projectId, role, modelId);
 
       setBindings((current) => {
         const others = current.filter((binding) => binding.role !== bound.role);
         return [...others, bound];
       });
     },
-    [httpUrl],
+    [httpUrl, projectId],
   );
 
   const refreshInstalled = useCallback(async () => {

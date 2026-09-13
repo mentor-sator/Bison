@@ -1,4 +1,4 @@
-import { PROJECT_ID, describeFailure } from "./broker";
+import { describeFailure } from "./broker";
 
 const REQUEST_ID_HEADER = "x-bison-request-id";
 
@@ -257,8 +257,12 @@ async function open(url: string, signal: AbortSignal): Promise<RunStream> {
   return { requestId, drain: (onEvent) => drain(body, onEvent) };
 }
 
-export async function openRun(baseUrl: string, signal: AbortSignal): Promise<RunStream> {
-  return open(`${baseUrl}/projects/${PROJECT_ID}/run`, signal);
+export async function openRun(
+  baseUrl: string,
+  projectId: string,
+  signal: AbortSignal,
+): Promise<RunStream> {
+  return open(`${baseUrl}/projects/${encodeURIComponent(projectId)}/run`, signal);
 }
 
 export async function openConfirm(

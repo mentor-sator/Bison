@@ -20,14 +20,18 @@ export interface TasksView {
   transition: (taskId: string, state: string, reason: string | null) => Promise<void>;
 }
 
-export function useTasks(httpUrl: string): TasksView {
+export function useTasks(httpUrl: string, projectId: string | null): TasksView {
   const [tasksState, setTasksState] = useState<TasksState>("loading");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
 
   const load = useCallback(async (): Promise<[Task[], ProgressSnapshot | null]> => {
-    return Promise.all([fetchTasks(httpUrl), fetchProgress(httpUrl)]);
-  }, [httpUrl]);
+    if (projectId === null) {
+      return [[], null];
+    }
+
+    return Promise.all([fetchTasks(httpUrl, projectId), fetchProgress(httpUrl, projectId)]);
+  }, [httpUrl, projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,10 +65,14 @@ export function useTasks(httpUrl: string): TasksView {
 
   const addTask = useCallback(
     async (draft: TaskDraft) => {
-      await createTask(httpUrl, draft);
+      if (projectId === null) {
+        return;
+      }
+
+      await createTask(httpUrl, projectId, draft);
       await refresh();
     },
-    [httpUrl, refresh],
+    [httpUrl, projectId, refresh],
   );
 
   const transition = useCallback(

@@ -4,6 +4,7 @@ import { AddTask } from "./AddTask";
 import { CapabilityBar } from "./CapabilityBar";
 import { HaltBanner } from "./HaltBanner";
 import { ModelPicker } from "./ModelPicker";
+import { ProjectBar } from "./ProjectBar";
 import { RoleBar } from "./RoleBar";
 import { RunPanel } from "./RunPanel";
 import { TaskList } from "./TaskList";
@@ -12,6 +13,7 @@ import type { TaskDraft } from "./tasks";
 import { useBindings } from "./useBindings";
 import { useCapabilities } from "./useCapabilities";
 import { useGateway } from "./useGateway";
+import { useProjects } from "./useProjects";
 import { useRun } from "./useRun";
 import { useTasks } from "./useTasks";
 import "./styles.css";
@@ -22,11 +24,15 @@ export function App() {
     window.bison.gatewayHttpUrl,
   );
   const { manifestState, manifest } = useCapabilities(window.bison.gatewayHttpUrl);
+  const projects = useProjects(window.bison.gatewayHttpUrl);
+  const projectId = projects.current?.id ?? null;
   const { bindingsState, bindings, installed, rebind, refreshInstalled } = useBindings(
     window.bison.gatewayHttpUrl,
+    projectId,
   );
   const { tasksState, tasks, progress, refresh, addTask, transition } = useTasks(
     window.bison.gatewayHttpUrl,
+    projectId,
   );
   const [draft, setDraft] = useState("");
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -40,10 +46,18 @@ export function App() {
     });
   }, [refresh]);
 
-  const { run, start, confirm } = useRun(window.bison.gatewayHttpUrl, settle);
+  const { run, start, confirm } = useRun(window.bison.gatewayHttpUrl, projectId, settle);
 
   const busy = activity.phase === "invoking";
   const pickerBinding = bindings.find((binding) => binding.role === pickerRole);
+  const haltSignalId = halt.signal?.id ?? null;
+  const refreshProjects = projects.refresh;
+
+  useEffect(() => {
+    if (haltSignalId !== null) {
+      refreshProjects();
+    }
+  }, [haltSignalId, refreshProjects]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -113,15 +127,21 @@ export function App() {
 
       <HaltBanner halt={halt} />
 
+      <ProjectBar projects={projects} />
+
       <CapabilityBar manifestState={manifestState} manifest={manifest} />
 
-      <RoleBar bindingsState={bindingsState} bindings={bindings} onPick={setPickerRole} />
+      {projectId !== null && (
+        <>
+          <RoleBar bindingsState={bindingsState} bindings={bindings} onPick={setPickerRole} />
 
-      <TaskList tasksState={tasksState} tasks={tasks} progress={progress} onTransition={move} />
+          <TaskList tasksState={tasksState} tasks={tasks} progress={progress} onTransition={move} />
 
-      <AddTask onAdd={add} />
+          <AddTask onAdd={add} />
 
-      <RunPanel run={run} onStart={start} onConfirm={confirm} />
+          <RunPanel run={run} onStart={start} onConfirm={confirm} />
+        </>
+      )}
 
       {taskError !== null && <div className="picker-error">{taskError}</div>}
 

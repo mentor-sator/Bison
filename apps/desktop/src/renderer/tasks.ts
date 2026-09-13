@@ -1,4 +1,4 @@
-import { PROJECT_ID, describeFailure } from "./broker";
+import { describeFailure } from "./broker";
 
 export interface Task {
   id: string;
@@ -81,8 +81,8 @@ const isProgressSnapshot = (value: unknown): value is ProgressSnapshot => {
   );
 };
 
-export async function fetchTasks(baseUrl: string): Promise<Task[]> {
-  const response = await fetch(`${baseUrl}/projects/${PROJECT_ID}/tasks`);
+export async function fetchTasks(baseUrl: string, projectId: string): Promise<Task[]> {
+  const response = await fetch(`${baseUrl}/projects/${encodeURIComponent(projectId)}/tasks`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -93,8 +93,11 @@ export async function fetchTasks(baseUrl: string): Promise<Task[]> {
   return Array.isArray(parsed) ? parsed.filter(isTask) : [];
 }
 
-export async function fetchProgress(baseUrl: string): Promise<ProgressSnapshot | null> {
-  const response = await fetch(`${baseUrl}/projects/${PROJECT_ID}/progress`);
+export async function fetchProgress(
+  baseUrl: string,
+  projectId: string,
+): Promise<ProgressSnapshot | null> {
+  const response = await fetch(`${baseUrl}/projects/${encodeURIComponent(projectId)}/progress`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -105,8 +108,12 @@ export async function fetchProgress(baseUrl: string): Promise<ProgressSnapshot |
   return isProgressSnapshot(parsed) ? parsed : null;
 }
 
-export async function createTask(baseUrl: string, draft: TaskDraft): Promise<Task> {
-  const response = await fetch(`${baseUrl}/projects/${PROJECT_ID}/tasks`, {
+export async function createTask(
+  baseUrl: string,
+  projectId: string,
+  draft: TaskDraft,
+): Promise<Task> {
+  const response = await fetch(`${baseUrl}/projects/${encodeURIComponent(projectId)}/tasks`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(draft),

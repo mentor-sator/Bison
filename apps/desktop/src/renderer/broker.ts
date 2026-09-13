@@ -1,5 +1,3 @@
-export const PROJECT_ID = "local";
-
 export const ROLES = ["analyst", "engine", "mediator", "inspector"] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -77,8 +75,8 @@ export async function describeFailure(response: Response): Promise<Error> {
   return new Error(`request failed: ${response.status}`);
 }
 
-export async function fetchBindings(baseUrl: string): Promise<RoleBinding[]> {
-  const response = await fetch(`${baseUrl}/projects/${PROJECT_ID}/bindings`);
+export async function fetchBindings(baseUrl: string, projectId: string): Promise<RoleBinding[]> {
+  const response = await fetch(`${baseUrl}/projects/${encodeURIComponent(projectId)}/bindings`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -89,8 +87,14 @@ export async function fetchBindings(baseUrl: string): Promise<RoleBinding[]> {
   return Array.isArray(parsed) ? parsed.filter(isRoleBinding) : [];
 }
 
-export async function bindRole(baseUrl: string, role: Role, modelId: string): Promise<RoleBinding> {
-  const response = await fetch(`${baseUrl}/projects/${PROJECT_ID}/bindings/${role}`, {
+export async function bindRole(
+  baseUrl: string,
+  projectId: string,
+  role: Role,
+  modelId: string,
+): Promise<RoleBinding> {
+  const path = `${baseUrl}/projects/${encodeURIComponent(projectId)}/bindings/${role}`;
+  const response = await fetch(path, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ model_id: modelId }),

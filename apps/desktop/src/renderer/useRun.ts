@@ -184,7 +184,7 @@ function reduce(state: RunState, action: RunAction): RunState {
   }
 }
 
-export function useRun(httpUrl: string, onSettled: () => void): RunView {
+export function useRun(httpUrl: string, projectId: string | null, onSettled: () => void): RunView {
   const [run, dispatch] = useReducer(reduce, IDLE);
   const controllerRef = useRef<AbortController | null>(null);
   const settledRef = useRef(onSettled);
@@ -239,8 +239,12 @@ export function useRun(httpUrl: string, onSettled: () => void): RunView {
   }, []);
 
   const start = useCallback(() => {
-    consume((signal) => openRun(httpUrl, signal));
-  }, [consume, httpUrl]);
+    if (projectId === null) {
+      return;
+    }
+
+    consume((signal) => openRun(httpUrl, projectId, signal));
+  }, [consume, httpUrl, projectId]);
 
   const confirm = useCallback(
     (stepId: string) => {
