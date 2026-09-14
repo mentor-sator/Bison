@@ -1,4 +1,5 @@
 import { describeFailure } from "./broker";
+import { request } from "./http";
 
 export const HALT_REASONS = ["kill_switch", "step_failure", "project_switch", "user_stop"] as const;
 
@@ -141,7 +142,7 @@ export function firstHaltReason(report: HaltStateReport): HaltReason | null {
 }
 
 export async function fetchHaltState(baseUrl: string): Promise<HaltStateReport> {
-  const response = await fetch(`${baseUrl}/halt/state`);
+  const response = await request(`${baseUrl}/halt/state`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -157,7 +158,7 @@ export async function fetchHaltState(baseUrl: string): Promise<HaltStateReport> 
 }
 
 export async function requestStop(baseUrl: string): Promise<HaltSignal> {
-  const response = await fetch(`${baseUrl}/halt`, {
+  const response = await request(`${baseUrl}/halt`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ reason: STOP_REASON }),
@@ -177,7 +178,7 @@ export async function requestStop(baseUrl: string): Promise<HaltSignal> {
 }
 
 export async function requestResume(baseUrl: string, actor = "user"): Promise<ResumeReport> {
-  const response = await fetch(`${baseUrl}/halt/resume`, {
+  const response = await request(`${baseUrl}/halt/resume`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ actor }),
