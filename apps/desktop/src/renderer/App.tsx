@@ -5,6 +5,7 @@ import { CapabilityBar } from "./CapabilityBar";
 import { HaltBanner } from "./HaltBanner";
 import { ModelPicker } from "./ModelPicker";
 import { ProjectBar } from "./ProjectBar";
+import { ReachBanner } from "./ReachBanner";
 import { RoleBar } from "./RoleBar";
 import { RunPanel } from "./RunPanel";
 import { Shell } from "./Shell";
@@ -16,16 +17,19 @@ import { useBindings } from "./useBindings";
 import { useCapabilities } from "./useCapabilities";
 import { useGateway } from "./useGateway";
 import { useProjects } from "./useProjects";
+import { useReach } from "./useReach";
 import { useRun } from "./useRun";
 import { useTasks } from "./useTasks";
 import "./styles.css";
 
 export function App() {
-  const { state, historyState, messages, activity, halt, send } = useGateway(
+  const { state, historyState, messages, activity, halt, send, reloadHistory } = useGateway(
     window.bison.gatewayWebSocketUrl,
     window.bison.gatewayHttpUrl,
   );
-  const { manifestState, manifest } = useCapabilities(window.bison.gatewayHttpUrl);
+  const reach = useReach(window.bison.gatewayHttpUrl);
+  const capabilities = useCapabilities(window.bison.gatewayHttpUrl);
+  const { manifestState, manifest } = capabilities;
   const projects = useProjects(window.bison.gatewayHttpUrl);
   const projectId = projects.current?.id ?? null;
   const { bindingsState, bindings, installed, rebind, refreshInstalled } = useBindings(
@@ -55,7 +59,15 @@ export function App() {
   const pickerBinding = bindings.find((binding) => binding.role === pickerRole);
   const haltSignalId = halt.signal?.id ?? null;
   const refreshProjects = projects.refresh;
-  const disconnected = state === "closed" || historyState === "failed";
+  const answering = reach.reach === "answering";
+
+  const retryEverything = () => {
+    reach.retry();
+    refreshProjects();
+    reloadHistory();
+    capabilities.refresh();
+    halt.refresh();
+  };
 
   useEffect(() => {
     if (haltSignalId !== null) {
@@ -162,21 +174,27 @@ export function App() {
               />
 
               <div className="min-w-0 flex-1">
-                <ProjectBar projects={projects} />
+                {answering ? (
+                  <ProjectBar projects={projects} />
+                ) : (
+                  <ReachBanner reach={reach} onRetry={retryEverything} />
+                )}
               </div>
 
-              <div className="flex shrink-0 items-center gap-2 text-[13px] text-ink-faint">
-                <span className={`indicator ${state}`} />
-                <span>{state}</span>
-                <span>
-                  {historyState === "loading" && "loading history"}
-                  {historyState === "failed" && "history unavailable"}
-                  {historyState === "ready" && `${messages.length} messages`}
-                </span>
-              </div>
+              {answering && (
+                <div className="flex shrink-0 items-center gap-2 text-[13px] text-ink-faint">
+                  <span className={`indicator ${state}`} />
+                  <span>{state}</span>
+                  <span>
+                    {historyState === "loading" && "loading history"}
+                    {historyState === "failed" && "history unavailable"}
+                    {historyState === "ready" && `${messages.length} messages`}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <HaltBanner halt={halt} />
+            {answering && <HaltBanner halt={halt} />}
           </>
         }
         sidebar={
@@ -185,7 +203,7 @@ export function App() {
               <RoleBar bindingsState={bindingsState} bindings={bindings} onPick={setPickerRole} />
             )}
 
-            <CapabilityBar manifestState={manifestState} manifest={manifest} />
+            {answering && <CapabilityBar manifestState={manifestState} manifest={manifest} />}
           </div>
         }
         main={
@@ -193,21 +211,21 @@ export function App() {
             <div className="stream">
               {messages.length === 0 ? (
                 <div className="m-auto max-w-[48ch] text-center">
-                  <p className="text-[13px] text-ink-muted">
-                    {disconnected
-                      ? "Not connected to the gateway"
-                      : historyState === "loading"
-                        ? "Reading the conversation"
-                        : "Nothing has been said yet"}
-                  </p>
+                  {answering && (
+                    <>
+                      <p className="text-[13px] text-ink-muted">
+                        {historyState === "loading"
+                          ? "Reading the conversation"
+                          : "Nothing has been said yet"}
+                      </p>
 
-                  <p className="mt-1 text-[13px] text-ink-faint">
-                    {disconnected
-                      ? `Nothing answered at ${window.bison.gatewayHttpUrl}`
-                      : historyState === "loading"
-                        ? "One moment"
-                        : "Type to start, or press / to reach the message box"}
-                  </p>
+                      <p className="mt-1 text-[13px] text-ink-faint">
+                        {historyState === "loading"
+                          ? "One moment"
+                          : "Type to start, or press / to reach the message box"}
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 messages.map((message) => (

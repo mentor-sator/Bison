@@ -12,11 +12,7 @@ export function CapabilityBar({ manifestState, manifest }: CapabilityBarProps) {
   }
 
   if (manifestState === "failed" || manifest === null) {
-    return (
-      <div className="capabilities">
-        capability manifest unavailable — bootstrap-service is not running
-      </div>
-    );
+    return <div className="capabilities">capability manifest unavailable</div>;
   }
 
   return (
