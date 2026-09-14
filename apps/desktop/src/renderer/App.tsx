@@ -187,7 +187,6 @@ export function App() {
                   <span>{state}</span>
                   <span>
                     {historyState === "loading" && "loading history"}
-                    {historyState === "failed" && "history unavailable"}
                     {historyState === "ready" && `${messages.length} messages`}
                   </span>
                 </div>
@@ -211,21 +210,26 @@ export function App() {
             <div className="stream">
               {messages.length === 0 ? (
                 <div className="m-auto max-w-[48ch] text-center">
-                  {answering && (
-                    <>
+                  {answering &&
+                    (historyState === "failed" ? (
                       <p className="text-[13px] text-ink-muted">
-                        {historyState === "loading"
-                          ? "Reading the conversation"
-                          : "Nothing has been said yet"}
+                        The conversation could not be read
                       </p>
+                    ) : (
+                      <>
+                        <p className="text-[13px] text-ink-muted">
+                          {historyState === "loading"
+                            ? "Reading the conversation"
+                            : "Nothing has been said yet"}
+                        </p>
 
-                      <p className="mt-1 text-[13px] text-ink-faint">
-                        {historyState === "loading"
-                          ? "One moment"
-                          : "Type to start, or press / to reach the message box"}
-                      </p>
-                    </>
-                  )}
+                        <p className="mt-1 text-[13px] text-ink-faint">
+                          {historyState === "loading"
+                            ? "One moment"
+                            : "Type to start, or press / to reach the message box"}
+                        </p>
+                      </>
+                    ))}
                 </div>
               ) : (
                 messages.map((message) => (
