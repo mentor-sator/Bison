@@ -32,6 +32,7 @@ export interface GatewayView {
   activity: Activity;
   halt: HaltView;
   send: (content: string) => boolean;
+  reloadHistory: () => void;
 }
 
 interface HaltState {
@@ -81,6 +82,7 @@ export function useGateway(webSocketUrl: string, httpUrl: string): GatewayView {
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [activity, setActivity] = useState<Activity>(IDLE);
   const [halt, dispatchHalt] = useReducer(reduceHalt, HALT_IDLE);
+  const [historyAttempt, setHistoryAttempt] = useState(0);
 
   const appendMessage = useCallback((message: StoredMessage) => {
     setMessages((current) => {
@@ -104,6 +106,8 @@ export function useGateway(webSocketUrl: string, httpUrl: string): GatewayView {
   useEffect(() => {
     let cancelled = false;
 
+    setHistoryState("loading");
+
     fetchHistory(httpUrl)
       .then((history) => {
         if (cancelled) {
@@ -121,7 +125,7 @@ export function useGateway(webSocketUrl: string, httpUrl: string): GatewayView {
     return () => {
       cancelled = true;
     };
-  }, [httpUrl]);
+  }, [httpUrl, historyAttempt]);
 
   useEffect(() => {
     void readHalt();
@@ -222,6 +226,10 @@ export function useGateway(webSocketUrl: string, httpUrl: string): GatewayView {
     void readHalt();
   }, [readHalt]);
 
+  const reloadHistory = useCallback(() => {
+    setHistoryAttempt((count) => count + 1);
+  }, []);
+
   return {
     state,
     historyState,
@@ -238,5 +246,6 @@ export function useGateway(webSocketUrl: string, httpUrl: string): GatewayView {
       refresh,
     },
     send,
+    reloadHistory,
   };
 }

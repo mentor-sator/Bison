@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchManifest, type CapabilityManifest } from "./capabilities";
 
 export type ManifestState = "loading" | "ready" | "failed";
@@ -6,14 +6,18 @@ export type ManifestState = "loading" | "ready" | "failed";
 export interface CapabilitiesView {
   manifestState: ManifestState;
   manifest: CapabilityManifest | null;
+  refresh: () => void;
 }
 
 export function useCapabilities(httpUrl: string): CapabilitiesView {
   const [manifestState, setManifestState] = useState<ManifestState>("loading");
   const [manifest, setManifest] = useState<CapabilityManifest | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+
+    setManifestState("loading");
 
     fetchManifest(httpUrl)
       .then((loaded) => {
@@ -32,7 +36,11 @@ export function useCapabilities(httpUrl: string): CapabilitiesView {
     return () => {
       cancelled = true;
     };
-  }, [httpUrl]);
+  }, [httpUrl, attempt]);
 
-  return { manifestState, manifest };
+  const refresh = useCallback(() => {
+    setAttempt((count) => count + 1);
+  }, []);
+
+  return { manifestState, manifest, refresh };
 }
