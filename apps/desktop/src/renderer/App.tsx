@@ -41,6 +41,7 @@ export function App() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [pickerRole, setPickerRole] = useState<Role | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLInputElement>(null);
 
   const settle = useCallback(() => {
     void refresh().catch(() => {
@@ -54,6 +55,7 @@ export function App() {
   const pickerBinding = bindings.find((binding) => binding.role === pickerRole);
   const haltSignalId = halt.signal?.id ?? null;
   const refreshProjects = projects.refresh;
+  const disconnected = state === "closed" || historyState === "failed";
 
   useEffect(() => {
     if (haltSignalId !== null) {
@@ -64,6 +66,38 @@ export function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
+
+  useEffect(() => {
+    const reachForComposer = (keyEvent: KeyboardEvent) => {
+      const target = keyEvent.target;
+      const editing =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT");
+
+      if (editing || keyEvent.ctrlKey || keyEvent.altKey || keyEvent.metaKey) {
+        return;
+      }
+
+      if (keyEvent.key === "/") {
+        keyEvent.preventDefault();
+        composerRef.current?.focus();
+        return;
+      }
+
+      if (keyEvent.key.length === 1) {
+        composerRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", reachForComposer);
+
+    return () => {
+      window.removeEventListener("keydown", reachForComposer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!busy) {
@@ -157,17 +191,37 @@ export function App() {
         main={
           <>
             <div className="stream">
-              {messages.map((message) => (
-                <div className="message" key={message.id}>
-                  <div className="meta">
-                    <span className="role">{message.role}</span>
-                    <span className="time">
-                      {new Date(message.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="content">{message.content}</div>
+              {messages.length === 0 ? (
+                <div className="m-auto max-w-[48ch] text-center">
+                  <p className="text-[13px] text-ink-muted">
+                    {disconnected
+                      ? "Not connected to the gateway"
+                      : historyState === "loading"
+                        ? "Reading the conversation"
+                        : "Nothing has been said yet"}
+                  </p>
+
+                  <p className="mt-1 text-[13px] text-ink-faint">
+                    {disconnected
+                      ? `Nothing answered at ${window.bison.gatewayHttpUrl}`
+                      : historyState === "loading"
+                        ? "One moment"
+                        : "Type to start, or press / to reach the message box"}
+                  </p>
                 </div>
-              ))}
+              ) : (
+                messages.map((message) => (
+                  <div className="message" key={message.id}>
+                    <div className="meta">
+                      <span className="role">{message.role}</span>
+                      <span className="time">
+                        {new Date(message.created_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <div className="content">{message.content}</div>
+                  </div>
+                ))
+              )}
               <div ref={bottomRef} />
             </div>
 
@@ -179,11 +233,11 @@ export function App() {
 
             <form className="composer" onSubmit={submit}>
               <input
+                ref={composerRef}
                 value={draft}
                 onChange={(changeEvent) => setDraft(changeEvent.target.value)}
                 placeholder={busy ? "waiting for the model" : "Send a message"}
                 disabled={busy}
-                autoFocus
               />
               <button type="submit" disabled={state !== "open" || busy}>
                 Send
