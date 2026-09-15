@@ -1,4 +1,5 @@
 import { describeFailure } from "./broker";
+import { request } from "./http";
 
 const REQUEST_ID_HEADER = "x-bison-request-id";
 
@@ -232,7 +233,7 @@ async function drain(
 }
 
 async function open(url: string, signal: AbortSignal): Promise<RunStream> {
-  const response = await fetch(url, {
+  const response = await request(url, {
     method: "POST",
     headers: { accept: "application/x-ndjson" },
     signal,
