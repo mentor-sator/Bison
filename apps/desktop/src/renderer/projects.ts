@@ -1,5 +1,6 @@
 import { describeFailure } from "./broker";
 import { isHaltSignal, isHaltStateReport, type HaltSignal, type HaltStateReport } from "./halt";
+import { request } from "./http";
 
 export const PROJECT_STATES = ["draft", "active", "paused", "archived"] as const;
 
@@ -102,7 +103,7 @@ export function describeCapacity(list: ProjectList): string {
 }
 
 export async function fetchProjects(baseUrl: string): Promise<ProjectList> {
-  const response = await fetch(`${baseUrl}/projects`);
+  const response = await request(`${baseUrl}/projects`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -122,7 +123,7 @@ export async function requestSwitch(
   projectId: string,
   actor = "user",
 ): Promise<SwitchOutcome> {
-  const response = await fetch(`${baseUrl}/projects/${encodeURIComponent(projectId)}/activate`, {
+  const response = await request(`${baseUrl}/projects/${encodeURIComponent(projectId)}/activate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ reason: "project switch", actor }),

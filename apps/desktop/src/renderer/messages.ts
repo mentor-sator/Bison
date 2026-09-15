@@ -1,3 +1,5 @@
+import { request } from "./http";
+
 export interface StoredMessage {
   id: string;
   request_id: string;
@@ -22,7 +24,7 @@ export const isStoredMessage = (value: unknown): value is StoredMessage => {
 };
 
 export async function fetchHistory(baseUrl: string): Promise<StoredMessage[]> {
-  const response = await fetch(`${baseUrl}/messages`);
+  const response = await request(`${baseUrl}/messages`);
 
   if (!response.ok) {
     throw new Error(`history request failed: ${response.status}`);

@@ -1,3 +1,5 @@
+import { request } from "./http";
+
 export interface Capability {
   backend: string | null;
   strength: string;
@@ -68,7 +70,7 @@ export function isDegraded(capability: Capability): boolean {
 }
 
 export async function fetchManifest(baseUrl: string): Promise<CapabilityManifest> {
-  const response = await fetch(`${baseUrl}/manifest`);
+  const response = await request(`${baseUrl}/manifest`);
 
   if (!response.ok) {
     throw new Error(`manifest request failed: ${response.status}`);
