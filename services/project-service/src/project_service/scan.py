@@ -4,13 +4,25 @@ import json
 import re
 import tomllib
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from tree_sitter import Node, Parser
-from tree_sitter_language_pack import get_parser
+import tree_sitter_bash
+import tree_sitter_c
+import tree_sitter_c_sharp
+import tree_sitter_cpp
+import tree_sitter_go
+import tree_sitter_java
+import tree_sitter_javascript
+import tree_sitter_php
+import tree_sitter_python
+import tree_sitter_ruby
+import tree_sitter_rust
+import tree_sitter_typescript
+from tree_sitter import Language, Node, Parser
 
 from project_service.secretscan import SecretFinding, scan_text
 
@@ -178,11 +190,33 @@ class ScanResult:
     truncated: bool
 
 
+GRAMMARS: dict[str, Callable[[], object]] = {
+    "python": tree_sitter_python.language,
+    "javascript": tree_sitter_javascript.language,
+    "typescript": tree_sitter_typescript.language_typescript,
+    "tsx": tree_sitter_typescript.language_tsx,
+    "go": tree_sitter_go.language,
+    "rust": tree_sitter_rust.language,
+    "java": tree_sitter_java.language,
+    "c": tree_sitter_c.language,
+    "cpp": tree_sitter_cpp.language,
+    "csharp": tree_sitter_c_sharp.language,
+    "ruby": tree_sitter_ruby.language,
+    "php": tree_sitter_php.language_php,
+    "bash": tree_sitter_bash.language,
+}
+
+
 @lru_cache(maxsize=32)
 def parser_for(language: str) -> Parser | None:
+    grammar = GRAMMARS.get(language)
+
+    if grammar is None:
+        return None
+
     try:
-        return get_parser(language)
-    except (LookupError, ValueError):
+        return Parser(Language(grammar()))
+    except ValueError:
         return None
 
 
