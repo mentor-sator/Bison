@@ -60,6 +60,7 @@ export function App() {
   const haltSignalId = halt.signal?.id ?? null;
   const refreshProjects = projects.refresh;
   const answering = reach.reach === "answering";
+  const canSend = answering && state === "open" && !busy && draft.trim().length > 0;
 
   const retryEverything = () => {
     reach.retry();
@@ -261,7 +262,7 @@ export function App() {
                 placeholder={busy ? "waiting for the model" : "Send a message"}
                 disabled={busy}
               />
-              <button type="submit" disabled={state !== "open" || busy}>
+              <button type="submit" disabled={!canSend}>
                 Send
               </button>
             </form>
