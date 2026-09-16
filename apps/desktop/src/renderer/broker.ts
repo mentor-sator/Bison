@@ -1,3 +1,5 @@
+import { request } from "./http";
+
 export const ROLES = ["analyst", "engine", "mediator", "inspector"] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -76,7 +78,7 @@ export async function describeFailure(response: Response): Promise<Error> {
 }
 
 export async function fetchBindings(baseUrl: string, projectId: string): Promise<RoleBinding[]> {
-  const response = await fetch(`${baseUrl}/projects/${encodeURIComponent(projectId)}/bindings`);
+  const response = await request(`${baseUrl}/projects/${encodeURIComponent(projectId)}/bindings`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -94,7 +96,7 @@ export async function bindRole(
   modelId: string,
 ): Promise<RoleBinding> {
   const path = `${baseUrl}/projects/${encodeURIComponent(projectId)}/bindings/${role}`;
-  const response = await fetch(path, {
+  const response = await request(path, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ model_id: modelId }),
@@ -119,7 +121,7 @@ export async function searchCatalog(
   limit: number,
 ): Promise<CatalogEntry[]> {
   const search = new URLSearchParams({ q: query, limit: String(limit) });
-  const response = await fetch(`${baseUrl}/catalog/search?${search.toString()}`);
+  const response = await request(`${baseUrl}/catalog/search?${search.toString()}`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -131,7 +133,7 @@ export async function searchCatalog(
 }
 
 export async function fetchInstalled(baseUrl: string): Promise<Set<string>> {
-  const response = await fetch(`${baseUrl}/models`);
+  const response = await request(`${baseUrl}/models`);
 
   if (!response.ok) {
     throw await describeFailure(response);
@@ -198,7 +200,7 @@ export async function pullModel(
   onProgress: (progress: PullProgress) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(`${baseUrl}/models/pull/${modelId}`, { method: "POST", signal });
+  const response = await request(`${baseUrl}/models/pull/${modelId}`, { method: "POST", signal });
 
   if (!response.ok) {
     throw await describeFailure(response);
