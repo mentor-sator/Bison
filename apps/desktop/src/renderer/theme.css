@@ -38,6 +38,18 @@
   --shadow-accent: 0 0 0 1px rgba(232, 40, 58, 0.4), 0 10px 28px -8px rgba(232, 40, 58, 0.4);
 
   --ease-ui: cubic-bezier(0.2, 0, 0, 1);
+
+  --animate-dot-pulse: dot-pulse 1.4s ease-in-out infinite;
+
+  @keyframes dot-pulse {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {
