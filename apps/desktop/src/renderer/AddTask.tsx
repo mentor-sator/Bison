@@ -5,6 +5,12 @@ const KINDS = ["code", "automation", "research", "real_world", "setup", "verific
 
 const TITLE_LIMIT = 200;
 
+const ROW = "flex items-center gap-1.5 border-b border-line-subtle px-3 py-2";
+const INPUT =
+  "min-w-0 rounded-tag border border-line bg-surface-2 px-2 py-1 text-[12px] text-ink transition-colors duration-[140ms] ease-ui placeholder:text-ink-faint focus:border-line-strong disabled:opacity-40";
+const SUBMIT =
+  "shrink-0 rounded-tag border border-line bg-surface-2 px-3.5 py-1 text-[11px] text-ink-muted transition-colors duration-[140ms] ease-ui hover:border-line-strong hover:text-ink disabled:text-ink-faint disabled:opacity-40";
+
 interface AddTaskProps {
   onAdd: (draft: TaskDraft) => Promise<boolean>;
 }
@@ -39,9 +45,9 @@ export function AddTask({ onAdd }: AddTaskProps) {
   };
 
   return (
-    <form className="add-task" onSubmit={submit}>
+    <form className={ROW} onSubmit={submit}>
       <input
-        className="add-task-title"
+        className={`${INPUT} flex-[2]`}
         value={title}
         onChange={(changeEvent) => setTitle(changeEvent.target.value)}
         placeholder="Add a task"
@@ -50,7 +56,7 @@ export function AddTask({ onAdd }: AddTaskProps) {
       />
 
       <select
-        className="add-task-kind"
+        className={`${INPUT} shrink-0 cursor-pointer`}
         value={kind}
         onChange={(changeEvent) => setKind(changeEvent.target.value)}
         disabled={busy}
@@ -63,14 +69,14 @@ export function AddTask({ onAdd }: AddTaskProps) {
       </select>
 
       <input
-        className="add-task-description"
+        className={`${INPUT} flex-[3]`}
         value={description}
         onChange={(changeEvent) => setDescription(changeEvent.target.value)}
         placeholder="what done looks like (optional)"
         disabled={busy}
       />
 
-      <button type="submit" disabled={busy || title.trim() === ""}>
+      <button type="submit" className={SUBMIT} disabled={busy || title.trim() === ""}>
         Add
       </button>
     </form>
