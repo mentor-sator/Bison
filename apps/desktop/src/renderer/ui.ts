@@ -3,6 +3,8 @@ export const button = {
     "inline-flex shrink-0 items-center gap-2 rounded-control border border-line bg-surface-2 px-3 py-1.5 text-[13px] font-medium text-ink transition-colors duration-[140ms] ease-ui hover:border-line-strong disabled:text-ink-faint",
   ghost:
     "inline-flex shrink-0 items-center gap-2 rounded-control px-2.5 py-1.5 text-[13px] font-medium text-ink-muted transition-colors duration-[140ms] ease-ui hover:text-ink disabled:text-ink-faint",
+  primary:
+    "inline-flex shrink-0 items-center gap-2 rounded-control bg-red-500 px-5 py-2.5 text-[14px] font-medium text-white transition-colors duration-[140ms] ease-ui hover:bg-red-400 active:bg-red-600 disabled:bg-surface-2 disabled:text-ink-faint",
   halt: "inline-flex shrink-0 items-center gap-2 rounded-control bg-red-500 px-4 py-1.5 text-[13px] font-semibold text-white shadow-accent transition-colors duration-[140ms] ease-ui hover:bg-red-400 active:bg-red-600 disabled:bg-surface-2 disabled:text-ink-faint disabled:shadow-none",
 } as const;
 

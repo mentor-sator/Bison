@@ -13,7 +13,7 @@ import { TaskList } from "./TaskList";
 import markUrl from "./brand/mark-128.png";
 import type { Role } from "./broker";
 import type { TaskDraft } from "./tasks";
-import { notice } from "./ui";
+import { button, mark, notice } from "./ui";
 import { useBindings } from "./useBindings";
 import { useCapabilities } from "./useCapabilities";
 import { useGateway } from "./useGateway";
@@ -21,7 +21,23 @@ import { useProjects } from "./useProjects";
 import { useReach } from "./useReach";
 import { useRun } from "./useRun";
 import { useTasks } from "./useTasks";
-import "./styles.css";
+
+const MESSAGE =
+  "flex max-w-[720px] flex-col gap-1 rounded-control border border-line bg-surface-1 px-4 py-3";
+const COMPOSER =
+  "flex-1 rounded-control border border-line bg-surface-2 px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors duration-[140ms] ease-ui placeholder:text-ink-faint focus:border-red-500 disabled:text-ink-faint";
+
+function connectionTone(state: string): string {
+  if (state === "open") {
+    return "bg-status-ok";
+  }
+
+  if (state === "connecting") {
+    return "bg-status-wait";
+  }
+
+  return state === "closed" ? "bg-status-fail" : "bg-status-idle";
+}
 
 export function App() {
   const { state, historyState, messages, activity, halt, send, reloadHistory } = useGateway(
@@ -185,7 +201,7 @@ export function App() {
 
               {answering && (
                 <div className="flex shrink-0 items-center gap-2 text-[13px] text-ink-faint">
-                  <span className={`indicator ${state}`} />
+                  <span className={`${mark.dot} ${connectionTone(state)}`} />
                   <span>{state}</span>
                   <span>
                     {historyState === "loading" && "loading history"}
@@ -209,7 +225,7 @@ export function App() {
         }
         main={
           <>
-            <div className="stream">
+            <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-5">
               {messages.length === 0 ? (
                 <div className="m-auto max-w-[48ch] text-center">
                   {answering &&
@@ -235,14 +251,15 @@ export function App() {
                 </div>
               ) : (
                 messages.map((message) => (
-                  <div className="message" key={message.id}>
-                    <div className="meta">
-                      <span className="role">{message.role}</span>
-                      <span className="time">
-                        {new Date(message.created_at).toLocaleTimeString()}
-                      </span>
+                  <div className={MESSAGE} key={message.id}>
+                    <div className="flex gap-2.5 text-[11px] uppercase tracking-[0.06em] text-ink-faint">
+                      <span className="text-red-300">{message.role}</span>
+                      <span>{new Date(message.created_at).toLocaleTimeString()}</span>
                     </div>
-                    <div className="content">{message.content}</div>
+
+                    <div className="text-[14px] leading-relaxed whitespace-pre-wrap">
+                      {message.content}
+                    </div>
                   </div>
                 ))
               )}
@@ -255,15 +272,17 @@ export function App() {
 
             <ActivityBar activity={activity} elapsedSeconds={elapsedSeconds} />
 
-            <form className="composer" onSubmit={submit}>
+            <form className="flex gap-3 border-t border-line-subtle px-5 py-4" onSubmit={submit}>
               <input
                 ref={composerRef}
+                className={COMPOSER}
                 value={draft}
                 onChange={(changeEvent) => setDraft(changeEvent.target.value)}
                 placeholder={busy ? "waiting for the model" : "Send a message"}
                 disabled={busy}
               />
-              <button type="submit" disabled={!canSend}>
+
+              <button type="submit" className={button.primary} disabled={!canSend}>
                 Send
               </button>
             </form>
