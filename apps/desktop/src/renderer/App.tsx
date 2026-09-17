@@ -8,6 +8,7 @@ import { ProjectBar } from "./ProjectBar";
 import { ReachBanner } from "./ReachBanner";
 import { RoleBar } from "./RoleBar";
 import { RunPanel } from "./RunPanel";
+import { ServiceBar } from "./ServiceBar";
 import { Shell } from "./Shell";
 import { TaskList } from "./TaskList";
 import markUrl from "./brand/mark-128.png";
@@ -49,10 +50,14 @@ export function App() {
   const { manifestState, manifest } = capabilities;
   const projects = useProjects(window.bison.gatewayHttpUrl);
   const projectId = projects.current?.id ?? null;
-  const { bindingsState, bindings, installed, rebind, refreshInstalled } = useBindings(
-    window.bison.gatewayHttpUrl,
-    projectId,
-  );
+  const {
+    bindingsState,
+    bindings,
+    installed,
+    rebind,
+    refreshInstalled,
+    reload: reloadBindings,
+  } = useBindings(window.bison.gatewayHttpUrl, projectId);
   const { tasksState, tasks, progress, refresh, addTask, transition } = useTasks(
     window.bison.gatewayHttpUrl,
     projectId,
@@ -61,6 +66,7 @@ export function App() {
   const [taskError, setTaskError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [pickerRole, setPickerRole] = useState<Role | null>(null);
+  const handledRecovery = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
 
@@ -79,19 +85,30 @@ export function App() {
   const refreshManifest = capabilities.refresh;
   const refreshHalt = halt.refresh;
   const answering = reach.reach === "answering";
-  const reachGeneration = reach.generation;
+  const reachRecovery = reach.recovery;
   const canSend = answering && state === "open" && !busy && draft.trim().length > 0;
 
   useEffect(() => {
-    if (reachGeneration === 0 || !answering) {
+    if (reachRecovery === handledRecovery.current) {
       return;
     }
 
+    handledRecovery.current = reachRecovery;
     refreshProjects();
     reloadHistory();
     refreshManifest();
     refreshHalt();
-  }, [reachGeneration, answering, refreshProjects, reloadHistory, refreshManifest, refreshHalt]);
+    reloadBindings();
+    void refresh().catch(() => undefined);
+  }, [
+    reachRecovery,
+    refreshProjects,
+    reloadHistory,
+    refreshManifest,
+    refreshHalt,
+    reloadBindings,
+    refresh,
+  ]);
 
   useEffect(() => {
     if (haltSignalId !== null) {
@@ -225,6 +242,8 @@ export function App() {
             {projectId !== null && (
               <RoleBar bindingsState={bindingsState} bindings={bindings} onPick={setPickerRole} />
             )}
+
+            {answering && <ServiceBar unreachable={reach.unreachable} />}
 
             {answering && <CapabilityBar manifestState={manifestState} manifest={manifest} />}
           </div>

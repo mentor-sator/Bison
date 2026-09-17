@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { request } from "./http";
 
 export const DOWNSTREAM_NAMES = [
@@ -13,7 +13,10 @@ export type DownstreamName = (typeof DOWNSTREAM_NAMES)[number];
 
 export type Reach = "reaching" | "answering" | "silent";
 
-const POLL_MS = 3000;
+const GATEWAY = "gateway";
+const ANSWERING_POLL_MS = 10_000;
+const SILENT_POLL_FLOOR_MS = 3_000;
+const SILENT_POLL_CEILING_MS = 30_000;
 
 export interface HealthReport {
   status: string;
@@ -27,8 +30,8 @@ export interface HealthReport {
 export interface ReachView {
   reach: Reach;
   origin: string;
-  generation: number;
   unreachable: DownstreamName[];
+  recovery: number;
   retry: () => void;
 }
 
@@ -69,33 +72,63 @@ export async function fetchHealth(baseUrl: string): Promise<HealthReport> {
   return parsed;
 }
 
+export function silentDelay(failures: number): number {
+  return Math.min(SILENT_POLL_FLOOR_MS * 2 ** Math.max(failures - 1, 0), SILENT_POLL_CEILING_MS);
+}
+
+function sameNames(left: readonly DownstreamName[], right: readonly DownstreamName[]): boolean {
+  return left.length === right.length && left.every((name, index) => name === right[index]);
+}
+
 export function useReach(httpUrl: string): ReachView {
   const [reach, setReach] = useState<Reach>("reaching");
   const [unreachable, setUnreachable] = useState<DownstreamName[]>([]);
-  const [generation, setGeneration] = useState(0);
+  const [recovery, setRecovery] = useState(0);
+  const [read, setRead] = useState(0);
+  const failures = useRef(0);
+  const silenced = useRef<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
     let timer: number | null = null;
+
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => {
+        setRead((count) => count + 1);
+      }, delay);
+    };
 
     fetchHealth(httpUrl)
       .then((report) => {
         if (cancelled) {
           return;
         }
-        setUnreachable(DOWNSTREAM_NAMES.filter((name) => report[name] !== "ok"));
+
+        const silent = DOWNSTREAM_NAMES.filter((name) => report[name] !== "ok");
+        const stillSilent = new Set<string>(silent);
+        const recovered = [...silenced.current].some((name) => !stillSilent.has(name));
+
+        silenced.current = stillSilent;
+        failures.current = 0;
+        setUnreachable((current) => (sameNames(current, silent) ? current : silent));
         setReach("answering");
+
+        if (recovered) {
+          setRecovery((count) => count + 1);
+        }
+
+        schedule(ANSWERING_POLL_MS);
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
-        setUnreachable([]);
-        setReach("silent");
 
-        timer = window.setTimeout(() => {
-          setGeneration((count) => count + 1);
-        }, POLL_MS);
+        failures.current += 1;
+        silenced.current = new Set([GATEWAY]);
+        setUnreachable((current) => (current.length === 0 ? current : []));
+        setReach("silent");
+        schedule(silentDelay(failures.current));
       });
 
     return () => {
@@ -105,12 +138,13 @@ export function useReach(httpUrl: string): ReachView {
         window.clearTimeout(timer);
       }
     };
-  }, [httpUrl, generation]);
+  }, [httpUrl, read]);
 
   const retry = useCallback(() => {
+    failures.current = 0;
     setReach("reaching");
-    setGeneration((count) => count + 1);
+    setRead((count) => count + 1);
   }, []);
 
-  return { reach, origin: originOf(httpUrl), generation, unreachable, retry };
+  return { reach, origin: originOf(httpUrl), unreachable, recovery, retry };
 }
