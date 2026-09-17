@@ -13,6 +13,8 @@ export type DownstreamName = (typeof DOWNSTREAM_NAMES)[number];
 
 export type Reach = "reaching" | "answering" | "silent";
 
+const POLL_MS = 3000;
+
 export interface HealthReport {
   status: string;
   task_store: string;
@@ -74,6 +76,7 @@ export function useReach(httpUrl: string): ReachView {
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | null = null;
 
     fetchHealth(httpUrl)
       .then((report) => {
@@ -89,10 +92,18 @@ export function useReach(httpUrl: string): ReachView {
         }
         setUnreachable([]);
         setReach("silent");
+
+        timer = window.setTimeout(() => {
+          setGeneration((count) => count + 1);
+        }, POLL_MS);
       });
 
     return () => {
       cancelled = true;
+
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
     };
   }, [httpUrl, generation]);
 

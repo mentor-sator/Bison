@@ -76,16 +76,22 @@ export function App() {
   const pickerBinding = bindings.find((binding) => binding.role === pickerRole);
   const haltSignalId = halt.signal?.id ?? null;
   const refreshProjects = projects.refresh;
+  const refreshManifest = capabilities.refresh;
+  const refreshHalt = halt.refresh;
   const answering = reach.reach === "answering";
+  const reachGeneration = reach.generation;
   const canSend = answering && state === "open" && !busy && draft.trim().length > 0;
 
-  const retryEverything = () => {
-    reach.retry();
+  useEffect(() => {
+    if (reachGeneration === 0 || !answering) {
+      return;
+    }
+
     refreshProjects();
     reloadHistory();
-    capabilities.refresh();
-    halt.refresh();
-  };
+    refreshManifest();
+    refreshHalt();
+  }, [reachGeneration, answering, refreshProjects, reloadHistory, refreshManifest, refreshHalt]);
 
   useEffect(() => {
     if (haltSignalId !== null) {
@@ -195,7 +201,7 @@ export function App() {
                 {answering ? (
                   <ProjectBar projects={projects} />
                 ) : (
-                  <ReachBanner reach={reach} onRetry={retryEverything} />
+                  <ReachBanner reach={reach} onRetry={reach.retry} />
                 )}
               </div>
 
