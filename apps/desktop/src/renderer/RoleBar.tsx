@@ -35,7 +35,7 @@ export function RoleBar({ bindingsState, bindings, onPick }: RoleBarProps) {
 
         return (
           <button type="button" className={CHIP} key={role} onClick={() => onPick(role)}>
-            <span className="text-[10px] uppercase tracking-[0.04em] text-ink-muted">{role}</span>
+            <span className="text-ink-muted">{role}</span>
 
             <span className={localityTone(binding?.locality)}>
               {binding?.model_id ?? "unbound"}

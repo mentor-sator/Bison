@@ -151,9 +151,7 @@ export function ModelPicker({
     <div className={BACKDROP} onClick={dismiss}>
       <div className={PANEL} onClick={(clickEvent) => clickEvent.stopPropagation()}>
         <div className="flex items-center">
-          <span className="text-[11px] uppercase tracking-[0.06em] text-ink-muted">
-            bind {role}
-          </span>
+          <span className="text-[11.5px] font-medium text-ink-muted">Bind {role}</span>
 
           <button type="button" className={`${SMALL} ml-auto hover:text-ink`} onClick={dismiss}>
             {pullingId !== null ? "cancel" : "close"}

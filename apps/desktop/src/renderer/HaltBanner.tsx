@@ -12,6 +12,12 @@ interface HaltBannerProps {
   halt: HaltView;
 }
 
+interface Standing {
+  tone: string;
+  label: string;
+  detail: string;
+}
+
 const REASON_LABEL: Record<HaltReason, string> = {
   kill_switch: "the kill switch fired",
   step_failure: "a step failed",
@@ -19,26 +25,52 @@ const REASON_LABEL: Record<HaltReason, string> = {
   user_stop: "you stopped it",
 };
 
+function standingOf(halt: HaltView): Standing {
+  const { report, signal, halted } = halt;
+
+  if (halted) {
+    const reason = signal?.reason ?? (report === null ? null : firstHaltReason(report));
+
+    return {
+      tone: "bg-status-wait",
+      label: "Halted",
+      detail: reason === null ? "halted for an unreported reason" : REASON_LABEL[reason],
+    };
+  }
+
+  if (report === null) {
+    return { tone: "bg-status-idle", label: "Checking", detail: "asking the halt recipients" };
+  }
+
+  if (report.reachable_count === 0) {
+    return { tone: "bg-status-idle", label: "Unknown", detail: "no halt recipient answered" };
+  }
+
+  if (report.silent_count > 0) {
+    return {
+      tone: "bg-status-ok",
+      label: "Running",
+      detail: "nothing is halted among those that answered",
+    };
+  }
+
+  return { tone: "bg-status-ok", label: "Running", detail: "nothing is halted" };
+}
+
 export function HaltBanner({ halt }: HaltBannerProps) {
   const { report, signal, halted, pending } = halt;
-  const reason = signal?.reason ?? (report === null ? null : firstHaltReason(report));
+  const standing = standingOf(halt);
   const stopped = report === null ? [] : haltedServices(report);
   const silent = report === null ? [] : silentServices(report);
 
   return (
     <div className="flex flex-col gap-1.5 px-5 pb-3">
       <div className="flex items-center gap-3">
-        <span className={`${mark.dot} ${halted ? "bg-status-wait" : "bg-status-ok"}`} />
+        <span className={`${mark.dot} ${standing.tone}`} />
 
-        <span className="text-[13px] font-medium text-ink">{halted ? "Halted" : "Running"}</span>
+        <span className="text-[13px] font-medium text-ink">{standing.label}</span>
 
-        <span className="text-[13px] text-ink-muted">
-          {!halted
-            ? "nothing is halted"
-            : reason === null
-              ? "halted for an unreported reason"
-              : REASON_LABEL[reason]}
-        </span>
+        <span className="text-[13px] text-ink-muted">{standing.detail}</span>
 
         {halted && signal !== null && (
           <span className="text-[11.5px] text-ink-faint tabular">
@@ -47,7 +79,7 @@ export function HaltBanner({ halt }: HaltBannerProps) {
         )}
 
         <span className="min-w-0 flex-1 truncate text-[13px] text-ink-faint">
-          {report === null ? "checking services" : describeReach(report)}
+          {report === null ? "" : describeReach(report)}
         </span>
 
         <button

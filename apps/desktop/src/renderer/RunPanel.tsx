@@ -18,7 +18,7 @@ const PHASE_LABEL: Record<RunPhase, string> = {
 
 const PANEL =
   "flex flex-col gap-1.5 border-b border-line-subtle px-3 py-2.5 text-[12px] text-ink-muted";
-const CAPTION = "text-[10px] uppercase tracking-[0.04em] text-ink-faint";
+const CAPTION = "text-[11.5px] font-medium text-ink-faint";
 const CONTROL =
   "rounded-tag border border-line bg-surface-2 px-3 py-0.5 text-[11px] text-ink-muted transition-colors duration-[140ms] ease-ui hover:border-line-strong hover:text-ink disabled:text-ink-faint disabled:opacity-40";
 const CONTINUE =
@@ -48,7 +48,7 @@ export function RunPanel({ run, onStart, onConfirm }: RunPanelProps) {
   return (
     <div className={PANEL}>
       <div className="flex items-baseline gap-2.5">
-        <span className={CAPTION}>orchestration</span>
+        <span className={CAPTION}>Orchestration</span>
 
         <span className={phaseTone(run.phase, run.failed)}>{PHASE_LABEL[run.phase]}</span>
 
@@ -84,8 +84,8 @@ export function RunPanel({ run, onStart, onConfirm }: RunPanelProps) {
       {awaiting !== null && (
         <div className="flex items-center gap-3 rounded-tag border border-status-wait/40 bg-status-wait/10 px-3 py-2.5">
           <div className="flex flex-1 flex-col gap-0.5">
-            <span className="text-[10px] uppercase tracking-[0.04em] text-status-wait">
-              this step needs your approval
+            <span className="text-[11.5px] font-medium text-status-wait">
+              This step needs your approval
             </span>
 
             <span className="text-[13px] text-ink">{awaiting.description}</span>

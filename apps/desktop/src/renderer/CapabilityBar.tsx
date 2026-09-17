@@ -50,9 +50,7 @@ export function CapabilityBar({ manifestState, manifest }: CapabilityBarProps) {
             key={name}
             title={describe(capability)}
           >
-            <span className="text-[10px] uppercase tracking-[0.04em] text-ink-muted">
-              {name.replace("_", " ")}
-            </span>
+            <span className="text-ink-muted">{name.replace("_", " ")}</span>
 
             <span className={backendTone(capability)}>{capability.backend ?? "unavailable"}</span>
           </span>

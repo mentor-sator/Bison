@@ -277,7 +277,7 @@ export function App() {
               ) : (
                 messages.map((message) => (
                   <div className={MESSAGE} key={message.id}>
-                    <div className="flex gap-2.5 text-[11px] uppercase tracking-[0.06em] text-ink-faint">
+                    <div className="flex gap-2.5 text-[11.5px] font-medium text-ink-faint">
                       <span className="text-red-300">{message.role}</span>
                       <span>{new Date(message.created_at).toLocaleTimeString()}</span>
                     </div>

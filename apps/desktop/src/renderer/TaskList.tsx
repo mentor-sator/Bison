@@ -17,6 +17,14 @@ const ROW = "flex items-center gap-2.5 rounded-tag border px-2 py-1.5";
 const CONTROL =
   "rounded-tag border border-line bg-surface-2 px-2.5 py-0.5 text-[11px] text-ink-muted transition-colors duration-[140ms] ease-ui hover:border-line-strong hover:text-ink disabled:text-ink-faint disabled:opacity-40";
 
+function formatPercentage(value: number): string {
+  if (value > 0 && value < 1) {
+    return "<1%";
+  }
+
+  return `${Math.floor(value)}%`;
+}
+
 function stateTone(state: string): string {
   if (state === "completed") {
     return "text-status-ok";
@@ -74,10 +82,12 @@ export function TaskList({ tasksState, tasks, progress, onTransition }: TaskList
   return (
     <div className={PANEL}>
       <div className="flex items-baseline justify-between pb-1.5">
-        <span className="text-[10px] uppercase tracking-[0.04em] text-ink-faint">task tree</span>
+        <span className="text-[11.5px] font-medium text-ink-faint">Task tree</span>
 
         <span className="tabular-nums text-ink">
-          {progress === null ? "progress unavailable" : `${progress.overall.percentage}% overall`}
+          {progress === null
+            ? "progress unavailable"
+            : `${formatPercentage(progress.overall.percentage)} overall`}
         </span>
       </div>
 
@@ -100,7 +110,7 @@ export function TaskList({ tasksState, tasks, progress, onTransition }: TaskList
             </span>
 
             <span className="min-w-[40px] text-right tabular-nums">
-              {percentage === null ? "—" : `${percentage}%`}
+              {percentage === null ? "—" : formatPercentage(percentage)}
             </span>
 
             <span className="inline-flex gap-1">
