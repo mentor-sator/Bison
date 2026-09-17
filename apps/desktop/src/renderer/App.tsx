@@ -9,6 +9,7 @@ import { ReachBanner } from "./ReachBanner";
 import { RoleBar } from "./RoleBar";
 import { RunPanel } from "./RunPanel";
 import { ServiceBar } from "./ServiceBar";
+import { silentServices } from "./halt";
 import { Shell } from "./Shell";
 import { TaskList } from "./TaskList";
 import markUrl from "./brand/mark-128.png";
@@ -42,7 +43,9 @@ function blockedReason(mediatorSilent: boolean, halt: HaltView): string | null {
     return "the halt state has not been read";
   }
 
-  return halt.report.reachable_count === 0 ? "no halt recipient answered" : null;
+  const silent = silentServices(halt.report);
+
+  return silent.length === 0 ? null : `a halt could not reach ${silent.join(", ")}`;
 }
 
 function connectionTone(state: string): string {
