@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
+import { formatPercentage } from "./tasks";
 import type { RunPhase, RunState } from "./useRun";
 
 interface RunPanelProps {
   run: RunState;
+  blocked: string | null;
   onStart: () => void;
   onConfirm: (stepId: string) => void;
 }
@@ -36,9 +38,10 @@ function phaseTone(phase: RunPhase, failed: boolean): string {
   return phase === "awaiting" ? "text-status-wait" : "text-ink";
 }
 
-export function RunPanel({ run, onStart, onConfirm }: RunPanelProps) {
+export function RunPanel({ run, blocked, onStart, onConfirm }: RunPanelProps) {
   const tailRef = useRef<HTMLDivElement>(null);
   const busy = run.phase === "starting" || run.phase === "running";
+  const stalled = busy || blocked !== null;
   const awaiting = run.awaiting;
 
   useEffect(() => {
@@ -59,13 +62,15 @@ export function RunPanel({ run, onStart, onConfirm }: RunPanelProps) {
         </span>
 
         <span className="tabular-nums text-ink">
-          {run.percentage === null ? "—" : `${run.percentage}%`}
+          {run.percentage === null ? "—" : formatPercentage(run.percentage)}
         </span>
 
-        <button type="button" className={CONTROL} disabled={busy} onClick={onStart}>
+        <button type="button" className={CONTROL} disabled={stalled} onClick={onStart}>
           {run.phase === "idle" ? "Run" : "Run again"}
         </button>
       </div>
+
+      {blocked !== null && <div className="text-status-wait">{blocked}</div>}
 
       {run.task !== null && (
         <div className="flex items-baseline gap-2.5 rounded-tag border border-line px-2 py-1.5">
@@ -96,7 +101,7 @@ export function RunPanel({ run, onStart, onConfirm }: RunPanelProps) {
           <button
             type="button"
             className={CONTINUE}
-            disabled={busy}
+            disabled={stalled}
             onClick={() => {
               onConfirm(awaiting.step_id);
             }}

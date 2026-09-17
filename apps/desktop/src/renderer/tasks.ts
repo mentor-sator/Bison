@@ -27,6 +27,14 @@ export interface Progress {
   criteria_ignored: number;
 }
 
+export function formatPercentage(value: number): string {
+  if (value > 0 && value < 1) {
+    return "<1%";
+  }
+
+  return `${Math.floor(value)}%`;
+}
+
 export interface ProgressSnapshot {
   project_id: string;
   overall: Progress;

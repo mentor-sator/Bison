@@ -15,6 +15,7 @@ import markUrl from "./brand/mark-128.png";
 import type { Role } from "./broker";
 import type { TaskDraft } from "./tasks";
 import { button, mark, notice } from "./ui";
+import type { HaltView } from "./useGateway";
 import { useBindings } from "./useBindings";
 import { useCapabilities } from "./useCapabilities";
 import { useGateway } from "./useGateway";
@@ -27,6 +28,22 @@ const MESSAGE =
   "flex max-w-[720px] flex-col gap-1 rounded-control border border-line bg-surface-1 px-4 py-3";
 const COMPOSER =
   "flex-1 rounded-control border border-line bg-surface-2 px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors duration-[140ms] ease-ui placeholder:text-ink-faint focus:border-red-500 disabled:text-ink-faint";
+
+function blockedReason(mediatorSilent: boolean, halt: HaltView): string | null {
+  if (mediatorSilent) {
+    return "the mediator is not answering";
+  }
+
+  if (halt.halted) {
+    return "work is halted";
+  }
+
+  if (halt.report === null) {
+    return "the halt state has not been read";
+  }
+
+  return halt.report.reachable_count === 0 ? "no halt recipient answered" : null;
+}
 
 function connectionTone(state: string): string {
   if (state === "open") {
@@ -87,6 +104,7 @@ export function App() {
   const answering = reach.reach === "answering";
   const reachRecovery = reach.recovery;
   const canSend = answering && state === "open" && !busy && draft.trim().length > 0;
+  const runBlocked = blockedReason(reach.unreachable.includes("mediator"), halt);
 
   useEffect(() => {
     if (reachRecovery === handledRecovery.current) {
@@ -291,7 +309,9 @@ export function App() {
               <div ref={bottomRef} />
             </div>
 
-            {projectId !== null && <RunPanel run={run} onStart={start} onConfirm={confirm} />}
+            {projectId !== null && (
+              <RunPanel run={run} blocked={runBlocked} onStart={start} onConfirm={confirm} />
+            )}
 
             {taskError !== null && <div className={notice.error}>{taskError}</div>}
 
