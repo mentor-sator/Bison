@@ -13,6 +13,7 @@ import { TaskList } from "./TaskList";
 import markUrl from "./brand/mark-128.png";
 import type { Role } from "./broker";
 import type { TaskDraft } from "./tasks";
+import { notice } from "./ui";
 import { useBindings } from "./useBindings";
 import { useCapabilities } from "./useCapabilities";
 import { useGateway } from "./useGateway";
@@ -250,7 +251,7 @@ export function App() {
 
             {projectId !== null && <RunPanel run={run} onStart={start} onConfirm={confirm} />}
 
-            {taskError !== null && <div className="picker-error">{taskError}</div>}
+            {taskError !== null && <div className={notice.error}>{taskError}</div>}
 
             <ActivityBar activity={activity} elapsedSeconds={elapsedSeconds} />
 

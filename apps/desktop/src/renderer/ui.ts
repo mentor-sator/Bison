@@ -11,6 +11,10 @@ export const field = {
     "shrink-0 rounded-control border border-line bg-surface-2 px-3 py-1.5 text-[13px] text-ink transition-colors duration-[140ms] ease-ui hover:border-line-strong focus:border-red-500 disabled:text-ink-faint",
 } as const;
 
+export const notice = {
+  error: "rounded-tag border border-(--line-accent) px-3 py-2 text-[12px] text-status-fail",
+} as const;
+
 export const mark = {
   tag: "inline-flex shrink-0 items-center rounded-tag bg-(--tint-accent) px-2 py-0.5 text-[11.5px] font-medium text-red-300",
   dot: "inline-block h-2 w-2 shrink-0 rounded-full",

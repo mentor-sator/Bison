@@ -6,10 +6,22 @@ import {
   type PullProgress,
   type Role,
 } from "./broker";
+import { notice } from "./ui";
 
 const SEARCH_LIMIT = 40;
 const DEBOUNCE_MS = 200;
 const BYTES_PER_GB = 1024 ** 3;
+
+const BACKDROP = "fixed inset-0 flex items-center justify-center bg-sunken/80";
+const PANEL =
+  "flex max-h-[70vh] w-[min(640px,90vw)] flex-col gap-3 rounded-overlay border border-line bg-surface-2 p-5 shadow-overlay";
+const SEARCH =
+  "rounded-control border border-line bg-surface-3 px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors duration-[140ms] ease-ui focus:border-red-500";
+const ENTRY =
+  "grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-tag border px-3 py-2 transition-colors duration-[140ms] ease-ui hover:bg-surface-3";
+const SMALL =
+  "rounded-tag border border-line px-2.5 py-1 text-[11px] text-ink-muted transition-colors duration-[140ms] ease-ui";
+const CAPTION = "text-[11px] text-ink-faint";
 
 interface ModelPickerProps {
   httpUrl: string;
@@ -136,27 +148,32 @@ export function ModelPicker({
   };
 
   return (
-    <div className="picker" onClick={dismiss}>
-      <div className="picker-panel" onClick={(clickEvent) => clickEvent.stopPropagation()}>
-        <div className="picker-head">
-          <span className="picker-role">bind {role}</span>
-          <button type="button" className="picker-close" onClick={dismiss}>
+    <div className={BACKDROP} onClick={dismiss}>
+      <div className={PANEL} onClick={(clickEvent) => clickEvent.stopPropagation()}>
+        <div className="flex items-center">
+          <span className="text-[11px] uppercase tracking-[0.06em] text-ink-muted">
+            bind {role}
+          </span>
+
+          <button type="button" className={`${SMALL} ml-auto hover:text-ink`} onClick={dismiss}>
             {pullingId !== null ? "cancel" : "close"}
           </button>
         </div>
 
         <input
-          className="picker-search"
+          className={SEARCH}
           value={query}
           onChange={(changeEvent) => setQuery(changeEvent.target.value)}
           placeholder="search the catalog"
           autoFocus
         />
 
-        {error !== null && <div className="picker-error">{error}</div>}
+        {error !== null && <div className={notice.error}>{error}</div>}
 
-        <div className="picker-results">
-          {entries.length === 0 && <div className="picker-empty">nothing matches</div>}
+        <div className="flex flex-col gap-1 overflow-y-auto">
+          {entries.length === 0 && (
+            <div className="p-3 text-[12px] text-ink-faint">nothing matches</div>
+          )}
 
           {entries.map((entry) => {
             const onDisk = installed.has(entry.model_id);
@@ -165,20 +182,20 @@ export function ModelPicker({
 
             return (
               <div
-                className={`picker-entry ${entry.model_id === boundModelId ? "bound" : ""}`}
+                className={`${ENTRY} ${entry.model_id === boundModelId ? "border-red-500" : "border-transparent"}`}
                 key={entry.model_id}
               >
                 <button
                   type="button"
-                  className="picker-choose"
+                  className="flex flex-col gap-0.5 py-0.5 text-left disabled:opacity-50"
                   disabled={locked}
                   onClick={() => choose(entry.model_id)}
                 >
-                  <span className="picker-id">{entry.model_id}</span>
-                  <span className="picker-tags">{entry.capability_tags.join(" · ")}</span>
+                  <span className="text-[13px] text-ink">{entry.model_id}</span>
+                  <span className={CAPTION}>{entry.capability_tags.join(" · ")}</span>
                 </button>
 
-                <span className="picker-meta">
+                <span className={CAPTION}>
                   {entry.locality === "local"
                     ? `${entry.size_gb ?? "?"} GB${onDisk ? " · on disk" : ""}`
                     : entry.provider}
@@ -187,7 +204,7 @@ export function ModelPicker({
                 {pullable && (
                   <button
                     type="button"
-                    className="picker-pull"
+                    className={`${SMALL} hover:border-red-500 hover:text-red-300 disabled:opacity-40`}
                     disabled={locked}
                     onClick={() => download(entry.model_id)}
                   >
@@ -196,11 +213,15 @@ export function ModelPicker({
                 )}
 
                 {active && progress !== null && (
-                  <div className="picker-progress">
-                    <div className="picker-bar">
-                      <span style={{ width: `${percentOf(progress)}%` }} />
+                  <div className="col-span-full flex items-center gap-2.5">
+                    <div className="h-1 flex-1 overflow-hidden rounded-[2px] bg-line">
+                      <span
+                        className="block h-full bg-red-500 transition-[width] duration-200 ease-linear"
+                        style={{ width: `${percentOf(progress)}%` }}
+                      />
                     </div>
-                    <span className="picker-status">{describeProgress(progress)}</span>
+
+                    <span className={`${CAPTION} tabular-nums`}>{describeProgress(progress)}</span>
                   </div>
                 )}
               </div>
