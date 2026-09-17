@@ -10,7 +10,8 @@
     "build:renderer": "vite build",
     "build": "pnpm run build:main && pnpm run build:renderer",
     "start": "electron .",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@bison/tsconfig": "workspace:*",
@@ -27,7 +28,8 @@
     "pngjs": "7.0.0",
     "tailwindcss": "4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "vitest": "^5.0.1"
   },
   "dependencies": {
     "react": "^19.2.8",

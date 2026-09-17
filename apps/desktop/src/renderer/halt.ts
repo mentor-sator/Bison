@@ -127,6 +127,28 @@ export function describeReach(report: HaltStateReport): string {
   return `${report.reachable_count} of ${total} answered`;
 }
 
+export function blockedReason(
+  mediatorSilent: boolean,
+  halted: boolean,
+  report: HaltStateReport | null,
+): string | null {
+  if (mediatorSilent) {
+    return "the mediator is not answering";
+  }
+
+  if (halted) {
+    return "work is halted";
+  }
+
+  if (report === null) {
+    return "the halt state has not been read";
+  }
+
+  const silent = silentServices(report);
+
+  return silent.length === 0 ? null : `a halt could not reach ${silent.join(", ")}`;
+}
+
 export function haltedServices(report: HaltStateReport): string[] {
   return report.recipients.filter((entry) => entry.halted === true).map((entry) => entry.service);
 }
