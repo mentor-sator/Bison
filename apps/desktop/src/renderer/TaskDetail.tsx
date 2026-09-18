@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchCriteria, type Criterion } from "./tasks";
+import { criterionNote, fetchCriteria, type Criterion } from "./tasks";
 import { mark } from "./ui";
 
 interface TaskDetailProps {
@@ -11,18 +11,21 @@ type DetailState = "loading" | "ready" | "failed";
 
 const PANEL = "flex flex-col gap-1.5 rounded-tag border border-line bg-sunken px-2.5 py-2";
 const ROW = "flex items-baseline gap-2";
+const NOTE = "pl-4 text-[11px] text-ink-muted";
 
-const STATUS_TONE: Record<string, string> = {
-  verified: "bg-status-ok",
-  failed: "bg-status-fail",
-  unverified: "bg-status-idle",
-  ignored: "bg-status-idle",
-  skipped: "bg-status-idle",
-  inconclusive: "bg-status-wait",
+const STATUS_TONE: Record<string, { dot: string; word: string }> = {
+  verified: { dot: "bg-status-ok", word: "text-status-ok" },
+  failed: { dot: "bg-status-fail", word: "text-status-fail" },
+  unverified: { dot: "bg-status-idle", word: "text-ink-muted" },
+  ignored: { dot: "bg-status-idle", word: "text-ink-muted" },
+  skipped: { dot: "bg-status-idle", word: "text-ink-muted" },
+  inconclusive: { dot: "bg-status-wait", word: "text-status-wait" },
 };
 
-function statusTone(status: string): string {
-  return STATUS_TONE[status] ?? "bg-status-idle";
+const UNKNOWN_TONE = { dot: "bg-status-idle", word: "text-ink-muted" };
+
+function statusTone(status: string): { dot: string; word: string } {
+  return STATUS_TONE[status] ?? UNKNOWN_TONE;
 }
 
 export function TaskDetail({ httpUrl, taskId }: TaskDetailProps) {
@@ -67,19 +70,28 @@ export function TaskDetail({ httpUrl, taskId }: TaskDetailProps) {
 
   return (
     <div className={PANEL}>
-      {criteria.map((criterion) => (
-        <div className={ROW} key={criterion.id}>
-          <span className={`${mark.dot} ${statusTone(criterion.status)} translate-y-[3px]`} />
+      {criteria.map((criterion) => {
+        const tone = statusTone(criterion.status);
+        const note = criterionNote(criterion);
 
-          <span className="flex-1 text-ink">{criterion.statement}</span>
+        return (
+          <div className="flex flex-col gap-0.5" key={criterion.id}>
+            <div className={ROW}>
+              <span className={`${mark.dot} ${tone.dot} translate-y-[3px]`} />
 
-          <span className="shrink-0 text-[11px]">{criterion.check_kind}</span>
+              <span className="flex-1 text-ink">{criterion.statement}</span>
 
-          <span className="w-14 shrink-0 text-right text-[11px] tabular-nums">
-            {criterion.status}
-          </span>
-        </div>
-      ))}
+              <span className="shrink-0 text-[11px]">{criterion.check_kind}</span>
+
+              <span className={`w-14 shrink-0 text-right text-[11px] ${tone.word}`}>
+                {criterion.status}
+              </span>
+            </div>
+
+            {note !== null && <p className={NOTE}>{note}</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }

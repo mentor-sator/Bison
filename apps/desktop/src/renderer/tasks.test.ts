@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPercentage, isCriterion } from "./tasks";
+import { criterionNote, formatPercentage, isCriterion } from "./tasks";
 
 describe("formatPercentage", () => {
   it("floors rather than rounds, so it never claims completion early", () => {
@@ -38,5 +38,39 @@ describe("isCriterion", () => {
 
   it("rejects anything that is not an object", () => {
     expect([isCriterion(null), isCriterion("c1")]).toEqual([false, false]);
+  });
+});
+
+describe("criterionNote", () => {
+  const criterion = {
+    id: "c1",
+    task_id: "t1",
+    statement: "the port answers",
+    check_kind: "deterministic",
+    check_spec: null,
+    weight: 1,
+    status: "failed",
+    status_reason: null,
+    verified_by: null,
+  };
+
+  it("joins the verifier and the reason when both are present", () => {
+    expect(
+      criterionNote({ ...criterion, verified_by: "inspector", status_reason: "port 5432 refused" }),
+    ).toBe("inspector · port 5432 refused");
+  });
+
+  it("returns whichever one is present on its own", () => {
+    expect([
+      criterionNote({ ...criterion, verified_by: "inspector" }),
+      criterionNote({ ...criterion, status_reason: "port 5432 refused" }),
+    ]).toEqual(["inspector", "port 5432 refused"]);
+  });
+
+  it("says nothing when the service reported nothing", () => {
+    expect([
+      criterionNote(criterion),
+      criterionNote({ ...criterion, status_reason: "   " }),
+    ]).toEqual([null, null]);
   });
 });

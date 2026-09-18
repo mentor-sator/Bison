@@ -78,6 +78,14 @@ const isTask = (value: unknown): value is Task => {
   );
 };
 
+export function criterionNote(criterion: Criterion): string | null {
+  const parts = [criterion.verified_by, criterion.status_reason].filter(
+    (part): part is string => typeof part === "string" && part.trim() !== "",
+  );
+
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
 export const isCriterion = (value: unknown): value is Criterion => {
   if (typeof value !== "object" || value === null) {
     return false;
