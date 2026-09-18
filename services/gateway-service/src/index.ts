@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import websocket from "@fastify/websocket";
 import type { FastifyReply } from "fastify";
 import Fastify from "fastify";
@@ -96,7 +97,7 @@ function failureReason(error: unknown): { reason: string; detail: unknown } {
 }
 
 export function buildServer() {
-  const app = Fastify({ logger: { level: "info" } });
+  const app = Fastify({ logger: { level: config.logLevel } });
 
   app.register(websocket);
 
@@ -549,4 +550,12 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+function startedDirectly(): boolean {
+  const entry = process.argv[1];
+
+  return entry !== undefined && import.meta.url === pathToFileURL(entry).href;
+}
+
+if (startedDirectly()) {
+  void main();
+}

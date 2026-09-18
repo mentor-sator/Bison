@@ -38,4 +38,5 @@ export const config = {
   invokeTimeoutMs: intFromEnv("BISON_INVOKE_TIMEOUT_MS", 120000),
   haltTimeoutMs: intFromEnv("BISON_HALT_TIMEOUT_MS", 2000),
   userId: process.env.BISON_USER_ID ?? "local",
+  logLevel: process.env.BISON_LOG_LEVEL ?? "info",
 } as const;
