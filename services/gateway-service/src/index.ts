@@ -30,6 +30,7 @@ import {
 import {
   ProjectError,
   createTask,
+  fetchPlan,
   fetchProgress,
   listCriteria,
   listProjects,
@@ -288,6 +289,11 @@ export function buildServer() {
   app.get("/tasks/:taskId/criteria", async (request, reply) => {
     const params = request.params as { taskId: string };
     return viaProject(reply, () => listCriteria(params.taskId));
+  });
+
+  app.get("/tasks/:taskId/plan", async (request, reply) => {
+    const params = request.params as { taskId: string };
+    return viaProject(reply, () => fetchPlan(params.taskId));
   });
 
   app.get("/projects/:projectId/progress", async (request, reply) => {

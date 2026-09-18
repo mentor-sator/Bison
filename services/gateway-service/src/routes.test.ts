@@ -4,7 +4,13 @@ import { brokerHealthy } from "./broker-client.js";
 import { readState } from "./halt.js";
 import { buildServer } from "./index.js";
 import { mediatorHealthy } from "./mediator-client.js";
-import { ProjectError, listCriteria, moveTask, projectHealthy } from "./project-client.js";
+import {
+  ProjectError,
+  fetchPlan,
+  listCriteria,
+  moveTask,
+  projectHealthy,
+} from "./project-client.js";
 import { taskStoreHealthy } from "./task-store-client.js";
 
 vi.mock("./bootstrap-client.js", async (importActual) => ({
@@ -31,6 +37,7 @@ vi.mock("./project-client.js", async (importActual) => ({
   ...(await importActual<typeof import("./project-client.js")>()),
   projectHealthy: vi.fn(),
   listCriteria: vi.fn(),
+  fetchPlan: vi.fn(),
   moveTask: vi.fn(),
 }));
 
@@ -117,6 +124,66 @@ describe("GET /tasks/:taskId/criteria", () => {
 
     const response = await withServer((app) =>
       app.inject({ method: "GET", url: "/tasks/t1/criteria" }),
+    );
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ error: "project-service unavailable" });
+  });
+});
+
+describe("GET /tasks/:taskId/plan", () => {
+  const plan = {
+    id: "p1",
+    task_id: "t1",
+    intent: "make the port answer",
+    rationale: "the criterion needs a running service",
+    steps_total: 1,
+    gated_count: 1,
+    created_at: "2026-09-18T10:00:00Z",
+    steps: [
+      {
+        id: "s1",
+        plan_id: "p1",
+        position: 1,
+        description: "start the service",
+        service: "dev-env-service",
+        requires_confirmation: true,
+        confirmation_reason: "it writes outside the scope root",
+        on_failure: "halt",
+        reversible: false,
+        criterion_refs: ["c1"],
+        state: "pending",
+      },
+    ],
+  };
+
+  it("returns the plan project-service holds", async () => {
+    vi.mocked(fetchPlan).mockResolvedValue(plan);
+
+    const response = await withServer((app) =>
+      app.inject({ method: "GET", url: "/tasks/t1/plan" }),
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(plan);
+  });
+
+  it("says null rather than inventing an empty plan", async () => {
+    vi.mocked(fetchPlan).mockResolvedValue(null);
+
+    const response = await withServer((app) =>
+      app.inject({ method: "GET", url: "/tasks/t1/plan" }),
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toBeNull();
+  });
+
+  it("answers 503 when project-service is unreachable", async () => {
+    vi.mocked(fetchPlan).mockRejectedValue(new Error("connect ECONNREFUSED"));
+
+    const response = await withServer((app) =>
+      app.inject({ method: "GET", url: "/tasks/t1/plan" }),
     );
 
     expect(response.statusCode).toBe(503);

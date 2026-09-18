@@ -78,6 +78,31 @@ const isTask = (value: unknown): value is Task => {
   );
 };
 
+export interface Step {
+  id: string;
+  position: number;
+  description: string;
+  service: string;
+  requires_confirmation: boolean;
+  confirmation_reason: string | null;
+  state: string;
+}
+
+export interface Plan {
+  id: string;
+  task_id: string;
+  intent: string;
+  steps_total: number;
+  gated_count: number;
+  steps: Step[];
+}
+
+export function planCaption(plan: Plan): string {
+  const steps = `${plan.steps.length} ${plan.steps.length === 1 ? "step" : "steps"}`;
+
+  return plan.gated_count === 0 ? steps : `${steps}, ${plan.gated_count} needing confirmation`;
+}
+
 export function criterionNote(criterion: Criterion): string | null {
   const parts = [criterion.verified_by, criterion.status_reason].filter(
     (part): part is string => typeof part === "string" && part.trim() !== "",
@@ -97,6 +122,19 @@ export const isCriterion = (value: unknown): value is Criterion => {
     typeof candidate["check_kind"] === "string" &&
     typeof candidate["status"] === "string" &&
     typeof candidate["weight"] === "number"
+  );
+};
+
+export const isPlan = (value: unknown): value is Plan => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate["id"] === "string" &&
+    typeof candidate["intent"] === "string" &&
+    typeof candidate["gated_count"] === "number" &&
+    Array.isArray(candidate["steps"])
   );
 };
 
@@ -161,6 +199,18 @@ export async function fetchCriteria(baseUrl: string, taskId: string): Promise<Cr
   const parsed: unknown = await response.json();
 
   return Array.isArray(parsed) ? parsed.filter(isCriterion) : [];
+}
+
+export async function fetchPlan(baseUrl: string, taskId: string): Promise<Plan | null> {
+  const response = await request(`${baseUrl}/tasks/${encodeURIComponent(taskId)}/plan`);
+
+  if (!response.ok) {
+    throw await describeFailure(response);
+  }
+
+  const parsed: unknown = await response.json();
+
+  return isPlan(parsed) ? parsed : null;
 }
 
 export async function createTask(

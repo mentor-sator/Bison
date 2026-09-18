@@ -57,6 +57,31 @@ export interface Criterion {
   verified_by: string | null;
 }
 
+export interface Step {
+  id: string;
+  plan_id: string;
+  position: number;
+  description: string;
+  service: string;
+  requires_confirmation: boolean;
+  confirmation_reason: string | null;
+  on_failure: string;
+  reversible: boolean;
+  criterion_refs: string[];
+  state: string;
+}
+
+export interface Plan {
+  id: string;
+  task_id: string;
+  intent: string;
+  rationale: string;
+  steps_total: number;
+  gated_count: number;
+  created_at: string;
+  steps: Step[];
+}
+
 export interface Progress {
   task_id: string;
   percentage: number;
@@ -147,6 +172,10 @@ export async function moveTask(taskId: string, move: TaskMove): Promise<Task> {
 
 export async function listCriteria(taskId: string): Promise<Criterion[]> {
   return send<Criterion[]>("GET", `/tasks/${encodeURIComponent(taskId)}/criteria`);
+}
+
+export async function fetchPlan(taskId: string): Promise<Plan | null> {
+  return send<Plan | null>("GET", `/tasks/${encodeURIComponent(taskId)}/plan`);
 }
 
 export async function fetchProgress(projectId: string): Promise<ProgressSnapshot> {
