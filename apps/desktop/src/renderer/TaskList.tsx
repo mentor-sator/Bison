@@ -1,7 +1,10 @@
+import { useState } from "react";
+import { TaskDetail } from "./TaskDetail";
 import { formatPercentage, type ProgressSnapshot, type Task } from "./tasks";
 import type { TasksState } from "./useTasks";
 
 interface TaskListProps {
+  httpUrl: string;
   tasksState: TasksState;
   tasks: Task[];
   progress: ProgressSnapshot | null;
@@ -53,7 +56,9 @@ function depthOf(task: Task, byId: Map<string, Task>): number {
   return depth;
 }
 
-export function TaskList({ tasksState, tasks, progress, onTransition }: TaskListProps) {
+export function TaskList({ httpUrl, tasksState, tasks, progress, onTransition }: TaskListProps) {
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+
   if (tasksState === "loading") {
     return <div className={PANEL}>loading the task tree</div>;
   }
@@ -87,55 +92,66 @@ export function TaskList({ tasksState, tasks, progress, onTransition }: TaskList
         const percentage = percentageFor(task.id);
         const restorable = task.state === "skipped" || task.state === "ignored";
 
+        const open = openTaskId === task.id;
+
         return (
           <div
-            className={`${ROW} ${rowTone(task.state)}`}
+            className="flex flex-col gap-1"
             key={task.id}
             style={{ marginLeft: `${depthOf(task, byId) * 16}px` }}
           >
-            <span className="flex-1 truncate text-ink" title={task.description}>
-              {task.title}
-            </span>
+            <div className={`${ROW} ${rowTone(task.state)}`}>
+              <button
+                type="button"
+                className="min-w-0 flex-1 truncate text-left text-ink"
+                title={task.description}
+                onClick={() => setOpenTaskId(open ? null : task.id)}
+              >
+                {task.title}
+              </button>
 
-            <span className={`min-w-[96px] text-[11px] ${stateTone(task.state)}`}>
-              {task.state.replace("_", " ")}
-            </span>
+              <span className={`min-w-[96px] text-[11px] ${stateTone(task.state)}`}>
+                {task.state.replace("_", " ")}
+              </span>
 
-            <span className="min-w-[40px] text-right tabular-nums">
-              {percentage === null ? "—" : formatPercentage(percentage)}
-            </span>
+              <span className="min-w-[40px] text-right tabular-nums">
+                {percentage === null ? "—" : formatPercentage(percentage)}
+              </span>
 
-            <span className="inline-flex gap-1">
-              {restorable ? (
-                <button
-                  type="button"
-                  className={CONTROL}
-                  onClick={() => onTransition(task.id, "pending", null)}
-                >
-                  Restore
-                </button>
-              ) : (
-                <>
+              <span className="inline-flex gap-1">
+                {restorable ? (
                   <button
                     type="button"
                     className={CONTROL}
-                    disabled={SETTLED.has(task.state)}
-                    onClick={() => onTransition(task.id, "skipped", "skipped by user")}
+                    onClick={() => onTransition(task.id, "pending", null)}
                   >
-                    Skip
+                    Restore
                   </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={CONTROL}
+                      disabled={SETTLED.has(task.state)}
+                      onClick={() => onTransition(task.id, "skipped", "skipped by user")}
+                    >
+                      Skip
+                    </button>
 
-                  <button
-                    type="button"
-                    className={CONTROL}
-                    disabled={SETTLED.has(task.state)}
-                    onClick={() => onTransition(task.id, "ignored", "ignored by user")}
-                  >
-                    Ignore
-                  </button>
-                </>
-              )}
-            </span>
+                    <button
+                      type="button"
+                      className={CONTROL}
+                      disabled={SETTLED.has(task.state)}
+                      onClick={() => onTransition(task.id, "ignored", "ignored by user")}
+                    >
+                      Ignore
+                    </button>
+                  </>
+                )}
+              </span>
+            </div>
+
+            {open && <TaskDetail httpUrl={httpUrl} taskId={task.id} />}
           </div>
         );
       })}

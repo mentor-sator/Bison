@@ -27,7 +27,7 @@ import { useTasks } from "./useTasks";
 const MESSAGE =
   "flex max-w-[720px] flex-col gap-1 rounded-control border border-line bg-surface-1 px-4 py-3";
 const COMPOSER =
-  "flex-1 rounded-control border border-line bg-surface-2 px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors duration-[140ms] ease-ui placeholder:text-ink-faint focus:border-red-500 disabled:text-ink-faint";
+  "flex-1 rounded-control border border-line bg-surface-2 px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors duration-[140ms] ease-ui placeholder:text-ink-faint disabled:text-ink-faint";
 
 function connectionTone(state: string): string {
   if (state === "open") {
@@ -327,6 +327,7 @@ export function App() {
           ) : (
             <div className="flex flex-col gap-3 py-2">
               <TaskList
+                httpUrl={window.bison.gatewayHttpUrl}
                 tasksState={tasksState}
                 tasks={tasks}
                 progress={progress}

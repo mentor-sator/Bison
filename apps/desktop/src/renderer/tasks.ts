@@ -16,6 +16,18 @@ export interface Task {
   position: number;
 }
 
+export interface Criterion {
+  id: string;
+  task_id: string;
+  statement: string;
+  check_kind: string;
+  check_spec: Record<string, unknown> | null;
+  weight: number;
+  status: string;
+  status_reason: string | null;
+  verified_by: string | null;
+}
+
 export interface Progress {
   task_id: string;
   percentage: number;
@@ -63,6 +75,20 @@ const isTask = (value: unknown): value is Task => {
     typeof candidate["kind"] === "string" &&
     typeof candidate["state"] === "string" &&
     Array.isArray(candidate["depends_on"])
+  );
+};
+
+export const isCriterion = (value: unknown): value is Criterion => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate["id"] === "string" &&
+    typeof candidate["statement"] === "string" &&
+    typeof candidate["check_kind"] === "string" &&
+    typeof candidate["status"] === "string" &&
+    typeof candidate["weight"] === "number"
   );
 };
 
@@ -115,6 +141,18 @@ export async function fetchProgress(
   const parsed: unknown = await response.json();
 
   return isProgressSnapshot(parsed) ? parsed : null;
+}
+
+export async function fetchCriteria(baseUrl: string, taskId: string): Promise<Criterion[]> {
+  const response = await request(`${baseUrl}/tasks/${encodeURIComponent(taskId)}/criteria`);
+
+  if (!response.ok) {
+    throw await describeFailure(response);
+  }
+
+  const parsed: unknown = await response.json();
+
+  return Array.isArray(parsed) ? parsed.filter(isCriterion) : [];
 }
 
 export async function createTask(

@@ -45,6 +45,18 @@ export interface TaskMove {
   actor?: string;
 }
 
+export interface Criterion {
+  id: string;
+  task_id: string;
+  statement: string;
+  check_kind: string;
+  check_spec: Record<string, unknown> | null;
+  weight: number;
+  status: string;
+  status_reason: string | null;
+  verified_by: string | null;
+}
+
 export interface Progress {
   task_id: string;
   percentage: number;
@@ -131,6 +143,10 @@ export async function createTask(projectId: string, draft: TaskDraft): Promise<T
 
 export async function moveTask(taskId: string, move: TaskMove): Promise<Task> {
   return send<Task>("POST", `/tasks/${encodeURIComponent(taskId)}/state`, move);
+}
+
+export async function listCriteria(taskId: string): Promise<Criterion[]> {
+  return send<Criterion[]>("GET", `/tasks/${encodeURIComponent(taskId)}/criteria`);
 }
 
 export async function fetchProgress(projectId: string): Promise<ProgressSnapshot> {

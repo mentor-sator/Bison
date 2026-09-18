@@ -30,6 +30,7 @@ import {
   ProjectError,
   createTask,
   fetchProgress,
+  listCriteria,
   listProjects,
   listTasks,
   moveTask,
@@ -281,6 +282,11 @@ export function buildServer() {
   app.get("/projects/:projectId/tasks", async (request, reply) => {
     const params = request.params as { projectId: string };
     return viaProject(reply, () => listTasks(params.projectId));
+  });
+
+  app.get("/tasks/:taskId/criteria", async (request, reply) => {
+    const params = request.params as { taskId: string };
+    return viaProject(reply, () => listCriteria(params.taskId));
   });
 
   app.get("/projects/:projectId/progress", async (request, reply) => {
