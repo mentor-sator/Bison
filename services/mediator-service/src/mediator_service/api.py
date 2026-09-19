@@ -23,7 +23,7 @@ from mediator_service.broker import BrokerClient, BrokerError, BrokerUnreachable
 from mediator_service.config import settings
 from mediator_service.context import BriefFacts, MediatorContext
 from mediator_service.discipline import TreeRejectedError
-from mediator_service.dispatch import RouterClient, RunnerClient
+from mediator_service.dispatch import DevEnvClient, RouterClient, RunnerClient
 from mediator_service.execution import Clients, Resumption
 from mediator_service.loop import RunLoop
 from mediator_service.manifest import (
@@ -71,6 +71,7 @@ class Health(BaseModel):
     model_broker: str
     router_service: str
     task_runner: str
+    dev_env: str
 
 
 class TaskRead(BaseModel):
@@ -231,6 +232,7 @@ async def health() -> Health:
         model_broker=resolved.model_broker_url,
         router_service=resolved.router_service_url,
         task_runner=resolved.task_runner_url,
+        dev_env=resolved.dev_env_url,
     )
 
 
@@ -320,6 +322,11 @@ def clients_for_run() -> Clients:
             resolved.run_timeout_seconds,
             resolved.connect_timeout_seconds,
         ),
+        dev_env=DevEnvClient(
+            resolved.dev_env_url,
+            resolved.dev_env_timeout_seconds,
+            resolved.connect_timeout_seconds,
+        ),
         project=UpstreamProjectClient(
             resolved.project_service_url, resolved.upstream_timeout_seconds
         ),
@@ -331,9 +338,7 @@ async def drain(loop: RunLoop, clients: Clients) -> AsyncIterator[bytes]:
         async for chunk in loop.stream():
             yield chunk
     finally:
-        await clients.router.close()
-        await clients.runner.close()
-        await clients.project.close()
+        await clients.close()
 
 
 @app.post("/projects/{project_id}/tree")

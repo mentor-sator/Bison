@@ -9,6 +9,7 @@ import httpx
 from bison_contracts.halt import HaltReason, HaltSignal, HaltState
 
 from mediator_service.dispatch import (
+    DevEnvClient,
     Event,
     Plan,
     Result,
@@ -286,7 +287,10 @@ async def run_loop(
     runner = FakeRunner(scripts or {})
     project = FakeProject(tasks, failure, watch if halt_on else None)
 
-    loop = RunLoop(Clients(router, runner, project), switch, PROJECT_ID, REQUEST_ID, resumption)
+    dev_env = DevEnvClient("http://dev-env.test", 5.0, 1.0, transport=transport())
+    loop = RunLoop(
+        Clients(router, runner, dev_env, project), switch, PROJECT_ID, REQUEST_ID, resumption
+    )
     ran = Ran(loop, router, runner, project)
 
     async for chunk in loop.stream():
@@ -294,6 +298,7 @@ async def run_loop(
 
     await router.close()
     await runner.close()
+    await dev_env.close()
     await project.close()
 
     return ran

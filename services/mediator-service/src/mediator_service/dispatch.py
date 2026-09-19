@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import httpx
 
@@ -11,6 +11,9 @@ from mediator_service import resolve
 from mediator_service.upstream import optional_text, strings, text, whole
 
 TASK_RUNNER_SERVICE: Final[str] = "task-runner"
+DEV_ENV_SERVICE: Final[str] = "dev-env"
+
+DISPATCHED_SERVICES: Final[frozenset[str]] = frozenset({TASK_RUNNER_SERVICE, DEV_ENV_SERVICE})
 
 SUCCEEDED: Final[str] = "succeeded"
 FAILED: Final[str] = "failed"
@@ -47,6 +50,19 @@ class RunnerError(RuntimeError):
 class RunnerUnreachableError(RuntimeError):
     def __init__(self, base_url: str) -> None:
         super().__init__(f"task-runner unreachable at {base_url}")
+        self.base_url = base_url
+
+
+class DevEnvError(RuntimeError):
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(f"dev-env-service responded {status}: {detail}")
+        self.status = status
+        self.detail = detail
+
+
+class DevEnvUnreachableError(RuntimeError):
+    def __init__(self, base_url: str) -> None:
+        super().__init__(f"dev-env-service unreachable at {base_url}")
         self.base_url = base_url
 
 
@@ -161,8 +177,18 @@ class Step:
         return resolve.runnable(self.action)
 
     @property
+    def opens_editor(self) -> bool:
+        return isinstance(self.action, dict) and self.action.get("type") == resolve.OPEN_IN_EDITOR
+
+    @property
     def dispatchable(self) -> bool:
-        return self.service == TASK_RUNNER_SERVICE and (self.writes_file or self.runnable)
+        if self.service == TASK_RUNNER_SERVICE:
+            return self.writes_file or self.runnable
+
+        if self.service == DEV_ENV_SERVICE:
+            return self.opens_editor
+
+        return False
 
     @property
     def needs_network(self) -> bool:
@@ -221,6 +247,14 @@ class Result:
 
 
 Event = Output | Result
+
+
+class Executor(Protocol):
+    def dispatch(
+        self, step: Step, scope_root: str, task_id: str, confirmed: bool
+    ) -> AsyncIterator[Event]: ...
+
+    async def close(self) -> None: ...
 
 
 def to_step(payload: dict[str, Any]) -> Step:
@@ -465,19 +499,87 @@ class RunnerClient:
             yield event
 
     async def _stream(self, path: str, payload: dict[str, Any]) -> AsyncIterator[Event]:
-        try:
-            async with self._client.stream(
-                "POST", path, json=payload, timeout=self._timeout
-            ) as response:
-                if response.status_code >= httpx.codes.BAD_REQUEST:
-                    await response.aread()
+        async for event in stream_events(
+            self._client,
+            path,
+            payload,
+            self._timeout,
+            refused=RunnerError,
+            unreachable=lambda: RunnerUnreachableError(self._base_url),
+        ):
+            yield event
 
-                    raise RunnerError(response.status_code, reason(response))
 
-                async for line in response.aiter_lines():
-                    event = decode(line, path)
+class DevEnvClient:
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float,
+        connect_timeout: float,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._timeout = httpx.Timeout(timeout_seconds, connect=connect_timeout)
+        self._client = httpx.AsyncClient(base_url=self._base_url, transport=transport)
 
-                    if event is not None:
-                        yield event
-        except httpx.HTTPError as error:
-            raise RunnerUnreachableError(self._base_url) from error
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    def run_body(
+        self, step: Step, scope_root: str, task_id: str, confirmed: bool
+    ) -> dict[str, Any]:
+        return {
+            "scope_root": scope_root,
+            "task_id": task_id,
+            "confirmed": confirmed,
+            "action": step.action,
+        }
+
+    async def dispatch(
+        self, step: Step, scope_root: str, task_id: str, confirmed: bool
+    ) -> AsyncIterator[Event]:
+        if step.service != DEV_ENV_SERVICE:
+            raise UnroutableStepError(step.step_id, step.service)
+
+        if not step.opens_editor:
+            raise resolve.UnrunnableActionError(
+                "a dev-env step must carry an open_in_editor action"
+            )
+
+        path = f"/steps/{step.step_id}/run"
+        payload = self.run_body(step, scope_root, task_id, confirmed)
+
+        async for event in stream_events(
+            self._client,
+            path,
+            payload,
+            self._timeout,
+            refused=DevEnvError,
+            unreachable=lambda: DevEnvUnreachableError(self._base_url),
+        ):
+            yield event
+
+
+async def stream_events(
+    client: httpx.AsyncClient,
+    path: str,
+    payload: dict[str, Any],
+    limits: httpx.Timeout,
+    *,
+    refused: Callable[[int, str], Exception],
+    unreachable: Callable[[], Exception],
+) -> AsyncIterator[Event]:
+    try:
+        async with client.stream("POST", path, json=payload, timeout=limits) as response:
+            if response.status_code >= httpx.codes.BAD_REQUEST:
+                await response.aread()
+
+                raise refused(response.status_code, reason(response))
+
+            async for line in response.aiter_lines():
+                event = decode(line, path)
+
+                if event is not None:
+                    yield event
+    except httpx.HTTPError as error:
+        raise unreachable() from error

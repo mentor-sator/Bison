@@ -12,7 +12,7 @@ from bison_contracts.halt import HaltSignal
 
 from mediator_service import api
 from mediator_service.config import settings
-from mediator_service.dispatch import RouterClient, RunnerClient
+from mediator_service.dispatch import DevEnvClient, RouterClient, RunnerClient
 from mediator_service.execution import Clients
 from mediator_service.upstream import ProjectClient as UpstreamProjectClient
 
@@ -225,6 +225,10 @@ class Runner:
         return [entry["confirmed"] for entry in self.bodies]
 
 
+def untouched(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"dev-env was not expected to be called, but {request.url} was")
+
+
 def wire(monkeypatch: pytest.MonkeyPatch, project: Project, router: Router, runner: Runner) -> None:
     def build() -> Clients:
         return Clients(
@@ -233,6 +237,9 @@ def wire(monkeypatch: pytest.MonkeyPatch, project: Project, router: Router, runn
             ),
             runner=RunnerClient(
                 "http://127.0.0.1:8800", 30.0, 5.0, transport=httpx.MockTransport(runner.handler)
+            ),
+            dev_env=DevEnvClient(
+                "http://127.0.0.1:9000", 30.0, 5.0, transport=httpx.MockTransport(untouched)
             ),
             project=UpstreamProjectClient(
                 "http://127.0.0.1:8400", 30.0, transport=httpx.MockTransport(project.handler)

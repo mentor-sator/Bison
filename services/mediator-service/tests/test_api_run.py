@@ -12,7 +12,7 @@ from bison_contracts.halt import HaltSignal
 
 from mediator_service import api
 from mediator_service.config import settings
-from mediator_service.dispatch import RouterClient, RunnerClient
+from mediator_service.dispatch import DevEnvClient, RouterClient, RunnerClient
 from mediator_service.execution import Clients
 from mediator_service.upstream import ProjectClient as UpstreamProjectClient
 
@@ -224,6 +224,19 @@ class WatchedRunner(RunnerClient):
         await super().close()
 
 
+class WatchedDevEnv(DevEnvClient):
+    closed = False
+
+    async def close(self) -> None:
+        WatchedDevEnv.closed = True
+
+        await super().close()
+
+
+def untouched(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"dev-env was not expected to be called, but {request.url} was")
+
+
 class WatchedProject(UpstreamProjectClient):
     closed = False
 
@@ -236,6 +249,7 @@ class WatchedProject(UpstreamProjectClient):
 def wire(monkeypatch: pytest.MonkeyPatch, project: Project, router: Router, runner: Runner) -> None:
     WatchedRouter.closed = False
     WatchedRunner.closed = False
+    WatchedDevEnv.closed = False
     WatchedProject.closed = False
 
     def build() -> Clients:
@@ -245,6 +259,9 @@ def wire(monkeypatch: pytest.MonkeyPatch, project: Project, router: Router, runn
             ),
             runner=WatchedRunner(
                 "http://127.0.0.1:8800", 30.0, 5.0, transport=httpx.MockTransport(runner.handler)
+            ),
+            dev_env=WatchedDevEnv(
+                "http://127.0.0.1:9000", 30.0, 5.0, transport=httpx.MockTransport(untouched)
             ),
             project=WatchedProject(
                 "http://127.0.0.1:8400", 30.0, transport=httpx.MockTransport(project.handler)
@@ -265,7 +282,7 @@ def events_of(response: httpx.Response) -> list[dict[str, Any]]:
     return [json.loads(line) for line in response.text.splitlines() if line.strip()]
 
 
-async def test_health_now_names_the_router_and_the_runner() -> None:
+async def test_health_now_names_the_router_the_runner_and_dev_env() -> None:
     transport = httpx.ASGITransport(app=api.app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -275,6 +292,7 @@ async def test_health_now_names_the_router_and_the_runner() -> None:
 
     assert body["router_service"].startswith("http")
     assert body["task_runner"].startswith("http")
+    assert body["dev_env"].startswith("http")
 
 
 async def test_a_run_streams_ndjson(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -361,6 +379,7 @@ async def test_every_client_is_closed_when_the_stream_ends(
 
     assert WatchedRouter.closed
     assert WatchedRunner.closed
+    assert WatchedDevEnv.closed
     assert WatchedProject.closed
 
 

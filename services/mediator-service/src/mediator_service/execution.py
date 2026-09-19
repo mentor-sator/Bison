@@ -6,8 +6,14 @@ from typing import Final
 
 from mediator_service import events, settle
 from mediator_service.dispatch import (
+    DEV_ENV_SERVICE,
+    DISPATCHED_SERVICES,
     SUCCEEDED,
     TASK_RUNNER_SERVICE,
+    DevEnvClient,
+    DevEnvError,
+    DevEnvUnreachableError,
+    Executor,
     Output,
     Plan,
     Result,
@@ -57,6 +63,8 @@ HALT_REASON: Final[str] = "the run was halted before this step"
 NEEDS_CONFIRMATION: Final[str] = "this step needs confirmation"
 
 UPSTREAM_FAILURES: Final[tuple[type[Exception], ...]] = (
+    DevEnvError,
+    DevEnvUnreachableError,
     ProjectServiceError,
     ProjectServiceUnreachableError,
     RouterError,
@@ -73,7 +81,23 @@ UPSTREAM_FAILURES: Final[tuple[type[Exception], ...]] = (
 class Clients:
     router: RouterClient
     runner: RunnerClient
+    dev_env: DevEnvClient
     project: ProjectClient
+
+    def executor(self, step: Step) -> Executor:
+        if step.service == TASK_RUNNER_SERVICE:
+            return self.runner
+
+        if step.service == DEV_ENV_SERVICE:
+            return self.dev_env
+
+        raise UnroutableStepError(step.step_id, step.service)
+
+    async def close(self) -> None:
+        await self.router.close()
+        await self.runner.close()
+        await self.dev_env.close()
+        await self.project.close()
 
 
 @dataclass(frozen=True)
@@ -87,11 +111,14 @@ def ordered(steps: tuple[Step, ...]) -> tuple[Step, ...]:
 
 
 def undispatchable(step: Step) -> str:
-    if step.service != TASK_RUNNER_SERVICE:
+    if step.service not in DISPATCHED_SERVICES:
         return (
             f"step {step.step_id} is routed to {step.service}, "
             "which the mediator cannot dispatch yet"
         )
+
+    if step.service == DEV_ENV_SERVICE:
+        return f"step {step.step_id} carries no action dev-env can carry out"
 
     return f"step {step.step_id} carries no action the runner can execute"
 
@@ -375,7 +402,8 @@ class TaskPass:
             events.step_started(self._task.id, step.step_id, step.position, step.description)
         )
 
-        stream = self._clients.runner.dispatch(step, plan.scope_root, self._task.id, confirmed)
+        executor = self._clients.executor(step)
+        stream = executor.dispatch(step, plan.scope_root, self._task.id, confirmed)
 
         async for event in stream:
             if isinstance(event, Output):

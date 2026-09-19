@@ -9,6 +9,7 @@ WRITE_FILE: Final[str] = "write_file"
 RUN_PYTHON_SCRIPT: Final[str] = "run_python_script"
 RUN_PYTHON_MODULE: Final[str] = "run_python_module"
 INSTALL_PYTHON_PACKAGES: Final[str] = "install_python_packages"
+OPEN_IN_EDITOR: Final[str] = "open_in_editor"
 
 RUNNABLE_TYPES: Final[frozenset[str]] = frozenset(
     {RUN_PYTHON_SCRIPT, RUN_PYTHON_MODULE, INSTALL_PYTHON_PACKAGES}

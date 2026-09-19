@@ -9,6 +9,8 @@ import httpx
 import pytest
 
 from mediator_service.dispatch import (
+    DevEnvClient,
+    DevEnvUnreachableError,
     Event,
     FileWrite,
     Output,
@@ -113,13 +115,15 @@ def step_body(
     confirmation_reason: str | None = None,
     on_failure: str = "abort",
     service: str = "task-runner",
+    action: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "step_id": step_id,
         "position": position,
         "description": f"step {step_id}",
         "service": service,
-        "action": {"type": "run_python_script", "script_path": "build.py", "arguments": []},
+        "action": action
+        or {"type": "run_python_script", "script_path": "build.py", "arguments": []},
         "requires_confirmation": requires_confirmation,
         "confirmation_reason": confirmation_reason,
         "on_failure": on_failure,
@@ -252,6 +256,29 @@ class FakeRunner(RunnerClient):
             yield event
 
 
+class FakeDevEnv(DevEnvClient):
+    def __init__(
+        self,
+        scripts: dict[str, list[Event]] | None = None,
+        failure: Exception | None = None,
+    ) -> None:
+        super().__init__("http://dev-env.test", 5.0, 1.0, transport=transport())
+        self._scripts = scripts or {}
+        self._failure = failure
+        self.dispatched: list[tuple[str, str, str, bool]] = []
+
+    async def dispatch(
+        self, step: Step, scope_root: str, task_id: str, confirmed: bool
+    ) -> AsyncIterator[Event]:
+        self.dispatched.append((step.step_id, scope_root, task_id, confirmed))
+
+        if self._failure is not None:
+            raise self._failure
+
+        for event in self._scripts.get(step.step_id, []):
+            yield event
+
+
 class FakeProject(ProjectClient):
     def __init__(
         self,
@@ -309,6 +336,7 @@ class Ran:
     run: TaskPass
     router: FakeRouter
     runner: FakeRunner
+    dev_env: FakeDevEnv
     project: FakeProject
     emitted: list[dict[str, Any]] = field(default_factory=list)
 
@@ -342,6 +370,8 @@ async def run_pass(
     progress: Snapshot | None = None,
     router_failure: Exception | None = None,
     runner_failure: Exception | None = None,
+    dev_env_scripts: dict[str, list[Event]] | None = None,
+    dev_env_failure: Exception | None = None,
     project_failures: dict[str, Exception] | None = None,
     halt_after: int | None = None,
     replan_limit: int = MAX_REPLAN_ATTEMPTS,
@@ -353,10 +383,11 @@ async def run_pass(
     )
     router = FakeRouter(plans, router_failure)
     runner = FakeRunner(scripts, runner_failure)
+    dev_env = FakeDevEnv(dev_env_scripts, dev_env_failure)
     project = FakeProject(criteria, progress, project_failures)
 
     walker = TaskPass(
-        Clients(router, runner, project),
+        Clients(router, runner, dev_env, project),
         Emitter(REQUEST_ID, PROJECT_ID),
         PROJECT_ID,
         REQUEST_ID,
@@ -368,13 +399,14 @@ async def run_pass(
         resumption,
     )
 
-    ran = Ran(walker, router, runner, project)
+    ran = Ran(walker, router, runner, dev_env, project)
 
     async for chunk in walker.stream():
         ran.emitted.append(json.loads(chunk.decode("utf-8")))
 
     await router.close()
     await runner.close()
+    await dev_env.close()
     await project.close()
 
     return ran
@@ -671,6 +703,80 @@ async def test_a_step_routed_elsewhere_fails_the_task_rather_than_being_skipped(
     )
 
     assert ran.run.state == FAILED
+    assert ran.run.reason == (
+        "step s-1 is routed to automation, which the mediator cannot dispatch yet"
+    )
+    assert ran.runner.dispatched == []
+    assert ran.dev_env.dispatched == []
+
+
+OPEN_APP = {"type": "open_in_editor", "path": "C:\\scope\\app.py", "line": 3}
+
+
+async def test_a_dev_env_step_goes_to_dev_env_and_never_to_the_runner() -> None:
+    ran = await run_pass(
+        steps=(step_body(service="dev-env", action=OPEN_APP),),
+        dev_env_scripts={"s-1": [succeeded()]},
+    )
+
+    assert ran.run.state == COMPLETED
+    assert ran.dev_env.dispatched == [("s-1", SCOPE_ROOT, TASK_ID, False)]
+    assert ran.runner.dispatched == []
+    assert ran.step_states()[-1] == ("s-1", "succeeded")
+
+
+async def test_a_plan_can_move_between_the_runner_and_dev_env_in_order() -> None:
+    ran = await run_pass(
+        steps=(
+            step_body("s-1", position=0),
+            step_body("s-2", position=1, service="dev-env", action=OPEN_APP),
+            step_body("s-3", position=2),
+        ),
+        scripts={"s-1": [succeeded("s-1")], "s-3": [succeeded("s-3")]},
+        dev_env_scripts={"s-2": [succeeded("s-2")]},
+    )
+
+    assert ran.run.state == COMPLETED
+    assert [entry[0] for entry in ran.runner.dispatched] == ["s-1", "s-3"]
+    assert [entry[0] for entry in ran.dev_env.dispatched] == ["s-2"]
+    assert [step_id for step_id, state in ran.step_states() if state == "running"] == [
+        "s-1",
+        "s-2",
+        "s-3",
+    ]
+
+
+async def test_a_dev_env_step_that_fails_fails_the_task_with_the_editor_reason() -> None:
+    missing = "C:\\scope\\app.py does not exist, so there is nothing to open"
+    ran = await run_pass(
+        steps=(step_body(service="dev-env", action=OPEN_APP),),
+        dev_env_scripts={"s-1": [failed(exit_code=0, message=missing)]},
+    )
+
+    assert ran.run.state == FAILED
+    assert ran.run.reason == missing
+    assert ran.step_states()[-1] == ("s-1", "failed")
+
+
+async def test_a_dev_env_step_without_an_editor_action_is_never_sent() -> None:
+    ran = await run_pass(
+        steps=(step_body(service="dev-env"),),
+        dev_env_scripts={"s-1": [succeeded()]},
+    )
+
+    assert ran.run.state == FAILED
+    assert ran.run.reason == "step s-1 carries no action dev-env can carry out"
+    assert ran.dev_env.dispatched == []
+
+
+async def test_an_unreachable_dev_env_fails_the_task_and_says_where() -> None:
+    ran = await run_pass(
+        steps=(step_body(service="dev-env", action=OPEN_APP),),
+        dev_env_failure=DevEnvUnreachableError("http://127.0.0.1:9000"),
+    )
+
+    assert ran.run.state == FAILED
+    assert ran.run.reason == "dev-env-service unreachable at http://127.0.0.1:9000"
 
 
 @pytest.mark.parametrize("state", ["succeeded", "failed"])
