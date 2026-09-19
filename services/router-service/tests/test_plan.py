@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from router_service.actions import RunPythonModule, WriteFile
+from router_service.actions import OpenInEditor, RunPythonModule, WriteFile
 from router_service.plan import MAX_STEPS, RouterParseError, parse
 
 
@@ -213,6 +213,23 @@ def test_a_task_runner_step_without_an_action_is_refused() -> None:
 
 def test_an_action_on_a_service_that_cannot_run_one_is_refused() -> None:
     with pytest.raises(RouterParseError, match="must be null"):
+        parse(payload(steps=[step(service="engine-session")]))
+
+
+def test_a_dev_env_step_carries_the_editor_it_opens() -> None:
+    opened = {"type": "open_in_editor", "path": "src/reconcile.py", "line": 3}
+    parsed = parse(payload(steps=[step(service="dev-env", action=opened)])).steps[0]
+
+    assert parsed.action == OpenInEditor(path="src/reconcile.py", line=3)
+
+
+def test_a_dev_env_step_without_an_action_is_refused() -> None:
+    with pytest.raises(RouterParseError, match=r"steps\[0\]\.action is required"):
+        parse(payload(steps=[step(service="dev-env", action=None)]))
+
+
+def test_a_task_runner_action_on_a_dev_env_step_is_refused() -> None:
+    with pytest.raises(RouterParseError, match="not an action a dev-env step performs"):
         parse(payload(steps=[step(service="dev-env")]))
 
 

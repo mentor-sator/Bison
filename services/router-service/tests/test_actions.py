@@ -5,13 +5,18 @@ from typing import Any
 import pytest
 
 from router_service.actions import (
+    ACTION_MENUS,
     DECLARABLE_TYPES,
+    DEV_ENV_TYPES,
+    TASK_RUNNER_TYPES,
     ActionSpecError,
     InstallPythonPackages,
+    OpenInEditor,
     RunPythonModule,
     RunPythonScript,
     WriteFile,
     installs_packages,
+    opened_paths,
     parse,
     parse_for,
     payload,
@@ -58,6 +63,13 @@ def run_module(**overrides: Any) -> dict[str, Any]:
 
 def install(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {"type": "install_python_packages", "packages": ["fastapi"]}
+    base.update(overrides)
+
+    return base
+
+
+def open_editor(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {"type": "open_in_editor", "path": SCRIPT, "line": 12}
     base.update(overrides)
 
     return base
@@ -205,8 +217,83 @@ def test_a_task_runner_step_carries_the_action_it_declared() -> None:
 
 
 def test_another_service_carries_no_action() -> None:
-    for service in ("automation", "dev-env", "engine-session"):
+    for service in ("automation", "engine-session"):
         assert parse_for(None, service, LABEL) is None
+
+
+def test_the_refusal_names_every_service_that_carries_an_action() -> None:
+    with pytest.raises(ActionSpecError) as raised:
+        parse_for(write_file(), "engine-session", LABEL)
+
+    for service in ACTION_MENUS:
+        assert service in raised.value.detail
+
+
+def test_an_open_in_editor_action_parses() -> None:
+    action = parse(open_editor(), LABEL)
+
+    assert isinstance(action, OpenInEditor)
+    assert action.path == SCRIPT
+    assert action.line == 12
+
+
+def test_an_open_without_a_line_opens_at_the_top() -> None:
+    assert parse(open_editor(line=None), LABEL) == OpenInEditor(path=SCRIPT, line=None)
+
+
+def test_an_absent_line_reads_as_no_line() -> None:
+    entry = open_editor()
+    del entry["line"]
+
+    assert parse(entry, LABEL) == OpenInEditor(path=SCRIPT, line=None)
+
+
+@pytest.mark.parametrize("line", [0, -3, 2.5, "12", True])
+def test_a_line_that_is_not_a_whole_number_from_one_is_refused(line: object) -> None:
+    with pytest.raises(ActionSpecError, match=r"line must be a whole number from 1"):
+        parse(open_editor(line=line), LABEL)
+
+
+def test_an_open_needs_a_path() -> None:
+    with pytest.raises(ActionSpecError, match=r"steps\[0\]\.action\.path"):
+        parse(open_editor(path="  "), LABEL)
+
+
+def test_a_dev_env_step_must_carry_an_action() -> None:
+    with pytest.raises(ActionSpecError, match="is required for a dev-env step") as raised:
+        parse_for(None, "dev-env", LABEL)
+
+    assert "open_in_editor" in raised.value.detail
+
+
+def test_a_dev_env_step_carries_the_action_it_declared() -> None:
+    assert isinstance(parse_for(open_editor(), "dev-env", LABEL), OpenInEditor)
+
+
+@pytest.mark.parametrize("entry", [write_file(), run_script(), run_module(), install()])
+def test_a_dev_env_step_refuses_a_task_runner_action(entry: dict[str, Any]) -> None:
+    with pytest.raises(ActionSpecError, match="not an action a dev-env step performs"):
+        parse_for(entry, "dev-env", LABEL)
+
+
+def test_a_task_runner_step_refuses_a_dev_env_action() -> None:
+    with pytest.raises(ActionSpecError, match="not an action a task-runner step performs"):
+        parse_for(open_editor(), "task-runner", LABEL)
+
+
+def test_an_unknown_type_offers_only_the_menu_of_that_service() -> None:
+    with pytest.raises(ActionSpecError) as raised:
+        parse_for({"type": "run_shell"}, "task-runner", LABEL)
+
+    assert "open_in_editor" not in raised.value.detail
+
+    for name in TASK_RUNNER_TYPES:
+        assert name in raised.value.detail
+
+
+def test_every_declarable_type_belongs_to_exactly_one_menu() -> None:
+    assert TASK_RUNNER_TYPES | DEV_ENV_TYPES == DECLARABLE_TYPES
+    assert not TASK_RUNNER_TYPES & DEV_ENV_TYPES
 
 
 def test_an_action_on_another_service_is_refused_rather_than_ignored() -> None:
@@ -225,6 +312,14 @@ def test_a_stored_action_carries_arguments_as_a_list() -> None:
     assert isinstance(stored["arguments"], list)
 
 
+def test_a_stored_open_carries_its_line_even_when_null() -> None:
+    assert payload(parse(open_editor(line=None), LABEL)) == {
+        "type": "open_in_editor",
+        "path": SCRIPT,
+        "line": None,
+    }
+
+
 def test_a_stored_install_carries_packages_as_a_list() -> None:
     stored = payload(parse(install(packages=["fastapi", "uvicorn"]), LABEL))
 
@@ -232,7 +327,7 @@ def test_a_stored_install_carries_packages_as_a_list() -> None:
 
 
 def test_every_declarable_type_round_trips_through_storage() -> None:
-    for entry in (write_file(), run_script(), run_module(), install()):
+    for entry in (write_file(), run_script(), run_module(), install(), open_editor()):
         stored = payload(parse(entry, LABEL))
 
         assert stored["type"] == entry["type"]
@@ -243,6 +338,13 @@ def test_only_a_write_declares_a_written_path() -> None:
     assert written_paths(parse(run_script(), LABEL)) == ()
     assert written_paths(parse(run_module(), LABEL)) == ()
     assert written_paths(parse(install(), LABEL)) == ()
+    assert written_paths(parse(open_editor(), LABEL)) == ()
+
+
+def test_only_an_open_declares_an_opened_path() -> None:
+    assert opened_paths(parse(open_editor(), LABEL)) == (SCRIPT,)
+    assert opened_paths(parse(write_file(), LABEL)) == ()
+    assert opened_paths(parse(install(), LABEL)) == ()
 
 
 def test_only_an_install_declares_a_package_install() -> None:

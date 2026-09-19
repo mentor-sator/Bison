@@ -51,7 +51,7 @@ def effects_payload() -> st.SearchStrategy[dict[str, Any]]:
     )
 
 
-def action_payload() -> st.SearchStrategy[dict[str, Any]]:
+def task_runner_action_payload() -> st.SearchStrategy[dict[str, Any]]:
     names = st.text(min_size=1, max_size=30).filter(lambda t: t.strip())
     arguments = st.lists(st.text(max_size=20), max_size=3)
 
@@ -78,9 +78,31 @@ def action_payload() -> st.SearchStrategy[dict[str, Any]]:
     )
 
 
+def dev_env_action_payload() -> st.SearchStrategy[dict[str, Any]]:
+    names = st.text(min_size=1, max_size=30).filter(lambda t: t.strip())
+
+    return st.fixed_dictionaries(
+        {
+            "type": st.just("open_in_editor"),
+            "path": names,
+            "line": st.one_of(st.none(), st.integers(min_value=1, max_value=5000)),
+        }
+    )
+
+
+def action_for(service: str) -> st.SearchStrategy[Any]:
+    if service == "task-runner":
+        return task_runner_action_payload()
+
+    if service == "dev-env":
+        return dev_env_action_payload()
+
+    return st.none()
+
+
 def step_payload(criterion_ids: list[str]) -> st.SearchStrategy[dict[str, Any]]:
     def with_service(service: str) -> st.SearchStrategy[dict[str, Any]]:
-        chosen: st.SearchStrategy[Any] = action_payload() if service == "task-runner" else st.none()
+        chosen = action_for(service)
 
         return st.fixed_dictionaries(
             {

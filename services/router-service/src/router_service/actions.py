@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, ClassVar, Final
 
-DECLARABLE_TYPES: Final[frozenset[str]] = frozenset(
+TASK_RUNNER_SERVICE: Final[str] = "task-runner"
+DEV_ENV_SERVICE: Final[str] = "dev-env"
+
+TASK_RUNNER_TYPES: Final[frozenset[str]] = frozenset(
     {
         "write_file",
         "run_python_script",
@@ -12,7 +15,14 @@ DECLARABLE_TYPES: Final[frozenset[str]] = frozenset(
     }
 )
 
-ACTION_REQUIRED_SERVICE: Final[str] = "task-runner"
+DEV_ENV_TYPES: Final[frozenset[str]] = frozenset({"open_in_editor"})
+
+DECLARABLE_TYPES: Final[frozenset[str]] = TASK_RUNNER_TYPES | DEV_ENV_TYPES
+
+ACTION_MENUS: Final[dict[str, frozenset[str]]] = {
+    TASK_RUNNER_SERVICE: TASK_RUNNER_TYPES,
+    DEV_ENV_SERVICE: DEV_ENV_TYPES,
+}
 
 MAX_CONTENT_CHARS: Final[int] = 200_000
 MAX_ARGUMENTS: Final[int] = 32
@@ -52,7 +62,18 @@ class InstallPythonPackages:
     TYPE: ClassVar[str] = "install_python_packages"
 
 
-Action = WriteFile | RunPythonScript | RunPythonModule | InstallPythonPackages
+@dataclass(frozen=True)
+class OpenInEditor:
+    path: str
+    line: int | None
+    TYPE: ClassVar[str] = "open_in_editor"
+
+
+Action = WriteFile | RunPythonScript | RunPythonModule | InstallPythonPackages | OpenInEditor
+
+
+def listed(types: frozenset[str]) -> str:
+    return ", ".join(sorted(types))
 
 
 def payload(action: Action) -> dict[str, Any]:
@@ -66,6 +87,13 @@ def payload(action: Action) -> dict[str, Any]:
 
 def written_paths(action: Action) -> tuple[str, ...]:
     if isinstance(action, WriteFile):
+        return (action.path,)
+
+    return ()
+
+
+def opened_paths(action: Action) -> tuple[str, ...]:
+    if isinstance(action, OpenInEditor):
         return (action.path,)
 
     return ()
@@ -132,21 +160,38 @@ def named(source: dict[str, Any], key: str, label: str, limit: int) -> tuple[str
     return tuple(item.strip() for item in collected)
 
 
-def parse(entry: Any, label: str) -> Action:
+def line_number(source: dict[str, Any], key: str, label: str) -> int | None:
+    value = source.get(key)
+
+    if value is None:
+        return None
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ActionSpecError(f"{label}.{key} must be a whole number from 1, or null")
+
+    return value
+
+
+def declared_type(entry: Any, label: str, menu: frozenset[str]) -> str:
     if not isinstance(entry, dict):
         raise ActionSpecError(f"{label} must be an object")
 
     declared = entry.get("type")
 
     if not isinstance(declared, str) or not declared:
-        listed = ", ".join(sorted(DECLARABLE_TYPES))
-        raise ActionSpecError(f"{label}.type must be one of {listed}")
+        raise ActionSpecError(f"{label}.type must be one of {listed(menu)}")
 
     if declared not in DECLARABLE_TYPES:
-        listed = ", ".join(sorted(DECLARABLE_TYPES))
         raise ActionSpecError(
-            f"{label}.type {declared} is not an action this machine performs; use one of {listed}"
+            f"{label}.type {declared} is not an action this machine performs; "
+            f"use one of {listed(menu)}"
         )
+
+    return declared
+
+
+def parse(entry: Any, label: str) -> Action:
+    declared = declared_type(entry, label, DECLARABLE_TYPES)
 
     if declared == WriteFile.TYPE:
         return WriteFile(
@@ -166,6 +211,12 @@ def parse(entry: Any, label: str) -> Action:
             arguments=strings(entry, "arguments", label, MAX_ARGUMENTS),
         )
 
+    if declared == OpenInEditor.TYPE:
+        return OpenInEditor(
+            path=text(entry, "path", label),
+            line=line_number(entry, "line", label),
+        )
+
     packages = named(entry, "packages", label, MAX_PACKAGES)
 
     if not packages:
@@ -175,19 +226,28 @@ def parse(entry: Any, label: str) -> Action:
 
 
 def parse_for(entry: Any, service: str, label: str) -> Action | None:
-    if service != ACTION_REQUIRED_SERVICE:
+    menu = ACTION_MENUS.get(service)
+
+    if menu is None:
         if entry is None:
             return None
 
+        carriers = " and ".join(sorted(ACTION_MENUS))
         raise ActionSpecError(
-            f"{label} must be null for a {service} step; only {ACTION_REQUIRED_SERVICE} "
-            "steps carry an action"
+            f"{label} must be null for a {service} step; only {carriers} steps carry an action"
         )
 
     if entry is None:
-        listed = ", ".join(sorted(DECLARABLE_TYPES))
         raise ActionSpecError(
-            f"{label} is required for a {ACTION_REQUIRED_SERVICE} step; name one of {listed}"
+            f"{label} is required for a {service} step; name one of {listed(menu)}"
+        )
+
+    declared = declared_type(entry, label, menu)
+
+    if declared not in menu:
+        raise ActionSpecError(
+            f"{label}.type {declared} is not an action a {service} step performs; "
+            f"use one of {listed(menu)}"
         )
 
     return parse(entry, label)

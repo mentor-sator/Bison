@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import PureWindowsPath
 
-from router_service.actions import Action, installs_packages, written_paths
+from router_service.actions import Action, installs_packages, opened_paths, written_paths
 from router_service.plan import Effects, ProposedStep, RouterDraft
 
 SAFE_FAILURE_POLICY = "abort"
@@ -72,6 +72,13 @@ def outside(paths: list[str], root: list[str]) -> list[str]:
     return [path for path in paths if not within(path, root)]
 
 
+def named_paths(paths: list[str]) -> str:
+    listed = ", ".join(paths[:MAX_PATHS_NAMED])
+    remaining = len(paths) - min(len(paths), MAX_PATHS_NAMED)
+
+    return f"{listed} and {remaining} more" if remaining > 0 else listed
+
+
 def reconciled(declared: Effects, action: Action | None) -> Effects:
     if action is None:
         return declared
@@ -98,10 +105,7 @@ def reasons(effects: Effects, root: list[str]) -> list[str]:
     escaped = outside(effects.writes_paths + effects.deletes_paths, root)
 
     if escaped:
-        named = ", ".join(escaped[:MAX_PATHS_NAMED])
-        remaining = len(escaped) - min(len(escaped), MAX_PATHS_NAMED)
-        tail = f" and {remaining} more" if remaining > 0 else ""
-        collected.append(f"touches {named}{tail} outside the project directory")
+        collected.append(f"touches {named_paths(escaped)} outside the project directory")
 
     if effects.needs_credentials:
         collected.append("needs credentials")
@@ -121,9 +125,21 @@ def reasons(effects: Effects, root: list[str]) -> list[str]:
     return collected
 
 
+def openings(action: Action | None, root: list[str]) -> list[str]:
+    if action is None:
+        return []
+
+    escaped = outside(list(opened_paths(action)), root)
+
+    if not escaped:
+        return []
+
+    return [f"opens {named_paths(escaped)} outside the project directory"]
+
+
 def gate(step: ProposedStep, position: int, root: list[str]) -> GatedStep:
     effects = reconciled(step.effects, step.action)
-    triggered = reasons(effects, root)
+    triggered = reasons(effects, root) + openings(step.action, root)
     confirm = bool(triggered)
     demoted = confirm and step.on_failure == "continue"
 

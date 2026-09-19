@@ -5,7 +5,7 @@ import re
 import pytest
 from bison_contracts import load_prompt
 
-from router_service.actions import DECLARABLE_TYPES
+from router_service.actions import ACTION_MENUS, DECLARABLE_TYPES
 from router_service.config import settings
 from router_service.manifest import CAPABILITY_NAMES
 from router_service.plan import FAILURE_POLICIES, INTENTS, SERVICES
@@ -38,6 +38,7 @@ ACTION_FIELDS = (
     "module",
     "arguments",
     "packages",
+    "line",
 )
 
 
@@ -92,10 +93,14 @@ def test_the_prompt_says_an_action_may_be_null() -> None:
     assert "null" in prompt_text()
 
 
-def test_the_prompt_names_the_service_that_requires_an_action() -> None:
-    text = prompt_text()
+@pytest.mark.parametrize("service", sorted(ACTION_MENUS))
+def test_the_prompt_names_every_service_that_requires_an_action(service: str) -> None:
+    assert f"{service} step" in prompt_text()
 
-    assert "task-runner step" in text
+
+@pytest.mark.parametrize("service", sorted(ACTION_MENUS))
+def test_the_prompt_gives_every_service_that_carries_an_action_its_own_menu(service: str) -> None:
+    assert f"The {service} action menu" in prompt_text()
 
 
 def test_the_prompt_forbids_command_lines() -> None:
@@ -140,7 +145,7 @@ def test_the_prompt_says_the_machine_is_reread_on_every_plan() -> None:
 def test_the_service_is_configured_with_a_prompt_that_knows_about_the_machine() -> None:
     resolved = settings()
 
-    assert resolved.prompt_version == "v5"
+    assert resolved.prompt_version == "v6"
     assert "MACHINE" in load_prompt(resolved.prompt_name, resolved.prompt_version).text
 
 
