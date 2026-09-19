@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from task_runner_service import SERVICE_NAME
 from task_runner_service.backends import NoSandboxAvailableError
 from task_runner_service.config import settings
-from task_runner_service.execution import Runner, build_request
+from task_runner_service.execution import Runner, WorkspaceUnavailableError, build_request
 from task_runner_service.manifest import ManifestUnavailableError
 from task_runner_service.sandbox import (
     InvalidSandboxRequestError,
@@ -165,6 +165,8 @@ async def run_step(step_id: str, body: RunBody) -> StreamingResponse:
     except ManifestUnavailableError as unavailable:
         raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
     except EnvironmentUnavailableError as unavailable:
+        raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
+    except WorkspaceUnavailableError as unavailable:
         raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
     except (KeyError, ValueError, InvalidSandboxRequestError, ScopeRootError) as invalid:
         raise HTTPException(status_code=422, detail=str(invalid)) from invalid

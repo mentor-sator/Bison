@@ -8,7 +8,7 @@ from bison_contracts import SandboxBackend
 
 from task_runner_service import venvs
 from task_runner_service.backends import Binding
-from task_runner_service.execution import Runner, build_request
+from task_runner_service.execution import Runner, WorkspaceUnavailableError, build_request
 from task_runner_service.sandbox import (
     Enforcement,
     OutputSink,
@@ -175,3 +175,74 @@ async def test_a_container_step_builds_no_environment_on_the_host(
 
     assert "VIRTUAL_ENV" not in provisioned.environment
     assert not venvs.home(runtime, "task-1").exists()
+
+
+@pytest.fixture
+def fresh_workspace(tmp_path: Path) -> Path:
+    return tmp_path.resolve() / "projects" / "p-1" / "workspace"
+
+
+@pytest.fixture
+def blocked_workspace(tmp_path: Path) -> Path:
+    blocker = tmp_path.resolve() / "workspace"
+    blocker.write_text("not a folder", encoding="utf-8")
+
+    return blocker
+
+
+def is_folder(path: Path) -> bool:
+    return path.is_dir()
+
+
+def contents(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def stock(scope: str) -> Path:
+    kept = Path(scope) / "kept.txt"
+    kept.write_text("still here", encoding="utf-8")
+
+    return kept
+
+
+async def test_a_workspace_that_does_not_exist_yet_is_created(
+    runtime: Path, fresh_workspace: Path
+) -> None:
+    runner = Runner(runtime)
+
+    await runner.provision(native(str(fresh_workspace)), "task-1", HOST)
+
+    assert is_folder(fresh_workspace)
+
+
+async def test_a_workspace_is_created_even_for_a_step_that_builds_no_environment(
+    runtime: Path, fresh_workspace: Path
+) -> None:
+    runner = Runner(runtime)
+
+    await runner.provision(native(str(fresh_workspace)), "task-1", CONTAINER)
+
+    assert is_folder(fresh_workspace)
+    assert not venvs.home(runtime, "task-1").exists()
+
+
+async def test_an_existing_workspace_keeps_what_is_in_it(runtime: Path, scope: str) -> None:
+    kept = stock(scope)
+    runner = Runner(runtime)
+
+    await runner.provision(native(scope), "task-1", HOST)
+
+    assert contents(kept) == "still here"
+
+
+async def test_a_workspace_path_taken_by_a_file_is_reported_not_overwritten(
+    runtime: Path, blocked_workspace: Path
+) -> None:
+    runner = Runner(runtime)
+
+    with pytest.raises(WorkspaceUnavailableError) as raised:
+        await runner.provision(native(str(blocked_workspace)), "task-1", HOST)
+
+    assert raised.value.path == str(blocked_workspace)
+    assert str(raised.value).startswith(f"the workspace {blocked_workspace} could not be created: ")
+    assert contents(blocked_workspace) == "not a folder"

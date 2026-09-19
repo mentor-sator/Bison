@@ -18,6 +18,7 @@ from task_runner_service.sandbox import (
     SandboxResult,
     Termination,
     program_kind,
+    writable_mounts,
 )
 from task_runner_service.stream import QueueSink, encode, error_event, output_event, result_event
 
@@ -26,6 +27,21 @@ DEFAULT_WALL_CLOCK_SECONDS = 600
 DEFAULT_MEMORY_MB = 512
 
 DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
+
+
+class WorkspaceUnavailableError(RuntimeError):
+    def __init__(self, path: str, reason: str) -> None:
+        super().__init__(f"the workspace {path} could not be created: {reason}")
+        self.path = path
+        self.reason = reason
+
+
+def ensure_workspace(request: SandboxRequest) -> None:
+    for mount in writable_mounts(request):
+        try:
+            Path(mount.path).mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise WorkspaceUnavailableError(mount.path, error.strerror or str(error)) from error
 
 
 def limits_from(declared: dict[str, Any] | None) -> Limits:
@@ -58,6 +74,8 @@ class Runner:
     async def provision(
         self, request: SandboxRequest, key: str, binding: Binding
     ) -> SandboxRequest:
+        ensure_workspace(request)
+
         if not binding.host_programs or program_kind(request) != "native":
             return request
 

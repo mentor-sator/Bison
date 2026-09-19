@@ -294,6 +294,40 @@ async def test_a_degraded_binding_is_announced_in_the_headers(
     assert response.headers["x-bison-sandbox-degraded"] == "true"
 
 
+@pytest.fixture
+def blocked_workspace(tmp_path: Path) -> Path:
+    blocker = tmp_path.resolve() / "workspace"
+    blocker.write_text("not a folder", encoding="utf-8")
+
+    return blocker
+
+
+async def test_a_workspace_that_cannot_be_created_answers_503(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    blocked_workspace: Path,
+    runs_dir: Path,
+) -> None:
+    blocker = blocked_workspace
+    sandbox = WasmSandbox(runtime_dir=runs_dir)
+    binding = Binding(
+        sandbox=sandbox, backend=sandbox.backend, preferred="wasm", degraded=False, reason=None
+    )
+
+    def planned(request: SandboxRequest) -> Binding:
+        return binding
+
+    monkeypatch.setattr(api.runner, "plan", planned)
+
+    async with client:
+        response = await client.post(
+            "/steps/step-1/run", json=body(scope_root=str(blocker), working_directory=str(blocker))
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"].startswith(f"the workspace {blocker} could not be created")
+
+
 async def test_terminating_an_unknown_step_reports_false(client: AsyncClient) -> None:
     async with client:
         response = await client.post("/steps/absent/terminate", json={"actor": "cedrick"})
