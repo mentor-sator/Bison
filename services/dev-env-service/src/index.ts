@@ -1,9 +1,21 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { HaltState, parseSignal, type Boundary } from "./halt.js";
+import { EditorUnavailableError, vsCode, type Editor } from "./editor.js";
+import { HaltState, HaltedError, parseSignal, type Boundary } from "./halt.js";
+import {
+  InvalidStepError,
+  StepRefusedError,
+  admit,
+  diskFiles,
+  ndjson,
+  parseRequest,
+  perform,
+  type Files,
+} from "./steps.js";
 
 export const SERVICE_NAME = "dev-env-service";
 
 const BOUNDARY: Boundary = "between_actions";
+const NDJSON = "application/x-ndjson";
 
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -20,10 +32,26 @@ function intFromEnv(name: string, fallback: number): number {
 export const config = {
   port: intFromEnv("BISON_DEV_ENV_PORT", 9000),
   host: process.env.BISON_DEV_ENV_HOST ?? "127.0.0.1",
+  logLevel: process.env.BISON_LOG_LEVEL ?? "info",
+  editorTimeoutMs: intFromEnv("BISON_DEV_ENV_EDITOR_TIMEOUT_MS", 30000),
 } as const;
 
-export function buildServer(): FastifyInstance {
-  const app = Fastify({ logger: true });
+export interface Ports {
+  editor: Editor;
+  files: Files;
+  timeoutMs: number;
+}
+
+export function defaultPorts(): Ports {
+  return {
+    editor: vsCode(process.env, config.editorTimeoutMs),
+    files: diskFiles,
+    timeoutMs: config.editorTimeoutMs,
+  };
+}
+
+export function buildServer(ports: Ports = defaultPorts()): FastifyInstance {
+  const app = Fastify({ logger: { level: config.logLevel } });
   const haltState = new HaltState(SERVICE_NAME, BOUNDARY);
 
   app.get("/health", async () => ({
@@ -59,6 +87,47 @@ export function buildServer(): FastifyInstance {
     }
 
     return haltState.resume(actor);
+  });
+
+  app.post<{ Params: { stepId: string } }>("/steps/:stepId/run", async (request, reply) => {
+    const { stepId } = request.params;
+
+    try {
+      haltState.guard();
+
+      const step = parseRequest(request.body);
+      const target = admit(step);
+      const events = await perform(
+        stepId,
+        target,
+        step.action,
+        ports.editor,
+        ports.files,
+        ports.timeoutMs,
+      );
+
+      app.log.info({ step: stepId, target, task: step.taskId }, "dev-env step finished");
+
+      return reply.type(NDJSON).send(ndjson(events));
+    } catch (error) {
+      if (error instanceof HaltedError) {
+        return reply.status(409).send({ detail: error.message });
+      }
+
+      if (error instanceof StepRefusedError) {
+        return reply.status(403).send({ detail: error.message });
+      }
+
+      if (error instanceof InvalidStepError) {
+        return reply.status(422).send({ detail: error.message });
+      }
+
+      if (error instanceof EditorUnavailableError) {
+        return reply.status(503).send({ detail: error.message });
+      }
+
+      throw error;
+    }
   });
 
   return app;
