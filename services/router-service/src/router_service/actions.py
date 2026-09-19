@@ -99,6 +99,16 @@ def opened_paths(action: Action) -> tuple[str, ...]:
     return ()
 
 
+def required_paths(action: Action) -> tuple[tuple[str, str], ...]:
+    if isinstance(action, OpenInEditor):
+        return (("opens", action.path),)
+
+    if isinstance(action, RunPythonScript):
+        return (("runs", action.script_path),)
+
+    return ()
+
+
 def installs_packages(action: Action) -> bool:
     return isinstance(action, InstallPythonPackages)
 

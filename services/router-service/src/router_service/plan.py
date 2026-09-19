@@ -8,7 +8,7 @@ from router_service.actions import Action, ActionSpecError
 from router_service.actions import parse_for as parse_action
 
 INTENTS = frozenset({"chat", "dev_task", "automation_task", "script_task", "account_action"})
-SERVICES = frozenset({"task-runner", "automation", "dev-env", "engine-session"})
+SERVICES = frozenset({"task-runner", "dev-env"})
 FAILURE_POLICIES = frozenset({"abort", "retry", "replan", "continue"})
 
 DEFAULT_FAILURE_POLICY = "abort"

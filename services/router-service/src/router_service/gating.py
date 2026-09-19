@@ -1,13 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
+from typing import Literal
 
-from router_service.actions import Action, installs_packages, opened_paths, written_paths
+from router_service.actions import (
+    Action,
+    installs_packages,
+    opened_paths,
+    required_paths,
+    written_paths,
+)
 from router_service.plan import Effects, ProposedStep, RouterDraft
 
 SAFE_FAILURE_POLICY = "abort"
 MAX_PATHS_NAMED = 3
+MAX_PROBLEMS_NAMED = 3
+
+Presence = Literal["file", "folder", "missing"]
+
+Disk = Callable[[str], Presence]
 
 
 class PlanRejectedError(RuntimeError):
@@ -168,7 +181,110 @@ def unknown_refs(draft: RouterDraft, known: set[str]) -> list[str]:
     return collected
 
 
-def build(draft: RouterDraft, scope_root: str, criterion_ids: list[str]) -> GatedPlan:
+def on_disk(path: str) -> Presence:
+    candidate = Path(path)
+
+    if candidate.is_file():
+        return "file"
+
+    if candidate.is_dir():
+        return "folder"
+
+    return "missing"
+
+
+def absolute(path: str, root: list[str]) -> PureWindowsPath:
+    candidate = PureWindowsPath(path)
+
+    return candidate if candidate.is_absolute() else PureWindowsPath(*root) / candidate
+
+
+def identity(path: str, root: list[str]) -> tuple[str, ...] | None:
+    segments = normalise(absolute(path, root))
+
+    return tuple(segments) if segments is not None else None
+
+
+def step_writes(step: ProposedStep) -> list[str]:
+    declared = list(step.effects.writes_paths)
+
+    if step.action is not None:
+        declared.extend(written_paths(step.action))
+
+    return declared
+
+
+def first_writers(draft: RouterDraft, root: list[str]) -> dict[tuple[str, ...], int]:
+    writers: dict[tuple[str, ...], int] = {}
+
+    for position, step in enumerate(draft.steps):
+        for path in step_writes(step):
+            key = identity(path, root)
+
+            if key is not None:
+                writers.setdefault(key, position)
+
+    return writers
+
+
+def out_of_order(draft: RouterDraft, root: list[str], disk: Disk) -> list[str]:
+    writers = first_writers(draft, root)
+    problems: list[str] = []
+
+    for position, step in enumerate(draft.steps):
+        if step.action is None:
+            continue
+
+        for verb, path in required_paths(step.action):
+            key = identity(path, root)
+
+            if key is None:
+                continue
+
+            writer = writers.get(key)
+
+            if writer is not None and writer < position:
+                continue
+
+            if writer is not None and writer > position:
+                problems.append(
+                    f"steps[{position}] {verb} {path} before steps[{writer}] writes it; "
+                    "move the write earlier"
+                )
+                continue
+
+            presence = disk(str(absolute(path, root)))
+
+            if presence == "folder":
+                problems.append(f"steps[{position}] {verb} {path}, which is a folder; name a file")
+            elif presence == "missing":
+                problems.append(
+                    f"steps[{position}] {verb} {path}, which no earlier step writes "
+                    "and which does not exist"
+                )
+
+    return problems
+
+
+def sequence(draft: RouterDraft, root: list[str], disk: Disk) -> None:
+    problems = out_of_order(draft, root, disk)
+
+    if not problems:
+        return
+
+    named = "; ".join(problems[:MAX_PROBLEMS_NAMED])
+    remaining = len(problems) - min(len(problems), MAX_PROBLEMS_NAMED)
+    tail = f"; and {remaining} more" if remaining > 0 else ""
+
+    raise PlanRejectedError(f"the plan uses files out of order: {named}{tail}")
+
+
+def build(
+    draft: RouterDraft,
+    scope_root: str,
+    criterion_ids: list[str],
+    disk: Disk = on_disk,
+) -> GatedPlan:
     root = normalise(PureWindowsPath(scope_root))
 
     if root is None or not PureWindowsPath(scope_root).is_absolute():
@@ -183,6 +299,8 @@ def build(draft: RouterDraft, scope_root: str, criterion_ids: list[str]) -> Gate
 
     if known and not any(step.criterion_refs for step in draft.steps):
         raise PlanRejectedError("the plan advances none of this task's acceptance criteria")
+
+    sequence(draft, root, disk)
 
     steps = [gate(step, position, root) for position, step in enumerate(draft.steps)]
 

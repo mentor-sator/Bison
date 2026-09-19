@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from router_service.actions import InstallPythonPackages, OpenInEditor, RunPythonModule, WriteFile
-from router_service.gating import PlanRejectedError, build
+from router_service.gating import PlanRejectedError, Presence, build
 from router_service.plan import Effects, ProposedStep, RouterDraft
 
 SCOPE = r"C:\Users\dev\bison\workspace"
@@ -316,9 +316,13 @@ def test_a_step_with_no_action_carries_none_through_gating() -> None:
     assert plan.steps[0].action is None
 
 
+def present(path: str) -> Presence:
+    return "file"
+
+
 def test_opening_a_file_inside_the_project_is_not_gated() -> None:
     opened = OpenInEditor(path=SCOPE + r"\src\reconcile.py", line=4)
-    plan = build(draft(step(service="dev-env", action=opened)), SCOPE, [CRITERION])
+    plan = build(draft(step(service="dev-env", action=opened)), SCOPE, [CRITERION], present)
 
     assert plan.steps[0].requires_confirmation is False
     assert plan.steps[0].action == opened
@@ -330,6 +334,7 @@ def test_opening_a_file_outside_the_project_is_gated_and_named() -> None:
         draft(step(service="dev-env", action=OpenInEditor(path=target, line=None))),
         SCOPE,
         [CRITERION],
+        present,
     )
 
     assert plan.steps[0].requires_confirmation is True
@@ -338,7 +343,7 @@ def test_opening_a_file_outside_the_project_is_gated_and_named() -> None:
 
 def test_opening_a_file_writes_nothing_on_its_behalf() -> None:
     opened = OpenInEditor(path=SCOPE + r"\reconcile.py", line=None)
-    plan = build(draft(step(service="dev-env", action=opened)), SCOPE, [CRITERION])
+    plan = build(draft(step(service="dev-env", action=opened)), SCOPE, [CRITERION], present)
 
     assert plan.steps[0].effects.writes_paths == []
 

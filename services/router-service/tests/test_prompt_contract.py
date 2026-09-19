@@ -145,7 +145,7 @@ def test_the_prompt_says_the_machine_is_reread_on_every_plan() -> None:
 def test_the_service_is_configured_with_a_prompt_that_knows_about_the_machine() -> None:
     resolved = settings()
 
-    assert resolved.prompt_version == "v6"
+    assert resolved.prompt_version == "v7"
     assert "MACHINE" in load_prompt(resolved.prompt_name, resolved.prompt_version).text
 
 
@@ -154,3 +154,23 @@ def test_the_service_is_configured_with_a_prompt_that_knows_about_actions() -> N
 
     assert resolved.prompt_name == "router"
     assert "action" in load_prompt(resolved.prompt_name, resolved.prompt_version).text
+
+
+@pytest.mark.parametrize("service", ["automation", "engine-session"])
+def test_the_prompt_offers_no_service_the_router_refuses(service: str) -> None:
+    resolved = settings()
+    raw = load_prompt(resolved.prompt_name, resolved.prompt_version).text
+    offered = [line for line in raw.splitlines() if line.startswith(service)]
+
+    assert offered == []
+
+
+def test_the_prompt_states_that_order_is_checked() -> None:
+    text = prompt_text()
+
+    assert "Write first, then open or run." in text
+    assert "install_python_packages" in text
+
+
+def test_the_prompt_forbids_planning_a_virtual_environment() -> None:
+    assert "Never plan a step that creates a virtual environment" in prompt_text()

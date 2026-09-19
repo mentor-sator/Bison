@@ -198,12 +198,12 @@ def test_content_reaches_the_parser_exactly_as_written() -> None:
     assert parsed.action.content == body
 
 
-def test_a_step_for_another_service_carries_no_action() -> None:
-    parsed = parse(
-        payload(steps=[step(service="automation", action=None, criterion_refs=["c1"])])
-    ).steps[0]
-
-    assert parsed.action is None
+@pytest.mark.parametrize("service", ["automation", "engine-session"])
+def test_a_service_the_mediator_cannot_dispatch_is_refused(service: str) -> None:
+    with pytest.raises(
+        RouterParseError, match=r"steps\[0\]\.service must be one of dev-env, task-runner"
+    ):
+        parse(payload(steps=[step(service=service, action=None, criterion_refs=["c1"])]))
 
 
 def test_a_task_runner_step_without_an_action_is_refused() -> None:
@@ -211,8 +211,8 @@ def test_a_task_runner_step_without_an_action_is_refused() -> None:
         parse(payload(steps=[step(action=None)]))
 
 
-def test_an_action_on_a_service_that_cannot_run_one_is_refused() -> None:
-    with pytest.raises(RouterParseError, match="must be null"):
+def test_a_service_outside_the_menu_is_refused_even_with_an_action() -> None:
+    with pytest.raises(RouterParseError, match="must be one of dev-env, task-runner"):
         parse(payload(steps=[step(service="engine-session")]))
 
 
