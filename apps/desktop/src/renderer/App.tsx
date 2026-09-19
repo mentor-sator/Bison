@@ -325,16 +325,20 @@ export function App() {
           projectId === null ? (
             <p className="px-4 py-3 text-[13px] text-ink-faint">No project is active.</p>
           ) : (
-            <div className="flex flex-col gap-3 py-2">
-              <TaskList
-                httpUrl={window.bison.gatewayHttpUrl}
-                tasksState={tasksState}
-                tasks={tasks}
-                progress={progress}
-                onTransition={move}
-              />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto py-2">
+                <TaskList
+                  httpUrl={window.bison.gatewayHttpUrl}
+                  tasksState={tasksState}
+                  tasks={tasks}
+                  progress={progress}
+                  onTransition={move}
+                />
+              </div>
 
-              <AddTask onAdd={add} />
+              <div className="border-t border-line-subtle py-2">
+                <AddTask onAdd={add} />
+              </div>
             </div>
           )
         }

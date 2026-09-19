@@ -78,7 +78,7 @@ export function TaskList({ httpUrl, tasksState, tasks, progress, onTransition }:
 
   return (
     <div className={PANEL}>
-      <div className="flex items-baseline justify-between pb-1.5">
+      <div className="sticky top-0 z-10 flex items-baseline justify-between bg-surface-1 pb-1.5">
         <span className="text-[11.5px] font-medium text-ink-faint">Task tree</span>
 
         <span className="tabular-nums text-ink">

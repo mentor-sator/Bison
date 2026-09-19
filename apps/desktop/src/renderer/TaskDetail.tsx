@@ -47,12 +47,14 @@ export function TaskDetail({ httpUrl, taskId }: TaskDetailProps) {
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planFailed, setPlanFailed] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     setDetailState("loading");
     setPlanFailed(false);
+    setPlanOpen(false);
 
     fetchCriteria(httpUrl, taskId)
       .then((loaded) => {
@@ -126,16 +128,23 @@ export function TaskDetail({ httpUrl, taskId }: TaskDetailProps) {
       <div className="mt-1 flex items-baseline gap-2 border-t border-line-subtle pt-2">
         <span className={HEADING}>Plan</span>
 
-        <span className="text-[11px] text-ink-muted">
-          {planFailed
-            ? "the plan could not be read"
-            : plan === null
-              ? "no plan yet"
-              : planCaption(plan)}
-        </span>
+        {plan === null ? (
+          <span className="text-[11px] text-ink-muted">
+            {planFailed ? "the plan could not be read" : "no plan yet"}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="text-[11px] text-ink-muted transition-colors duration-[140ms] ease-ui hover:text-ink"
+            onClick={() => setPlanOpen(!planOpen)}
+          >
+            {planCaption(plan)}
+            {planOpen ? " — hide" : " — show"}
+          </button>
+        )}
       </div>
 
-      {plan !== null && (
+      {plan !== null && planOpen && (
         <>
           <p className={NOTE}>{plan.intent}</p>
 

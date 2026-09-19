@@ -18,7 +18,7 @@ export function Shell({ topBar, sidebar, main, tracker }: ShellProps) {
 
       <main className="flex min-h-0 min-w-0 flex-col">{main}</main>
 
-      <section className="min-h-0 overflow-y-auto border-l border-line-subtle bg-surface-1">
+      <section className="flex min-h-0 flex-col border-l border-line-subtle bg-surface-1">
         {tracker}
       </section>
     </div>
