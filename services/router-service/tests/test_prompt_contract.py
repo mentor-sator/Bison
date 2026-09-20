@@ -145,7 +145,7 @@ def test_the_prompt_says_the_machine_is_reread_on_every_plan() -> None:
 def test_the_service_is_configured_with_a_prompt_that_knows_about_the_machine() -> None:
     resolved = settings()
 
-    assert resolved.prompt_version == "v7"
+    assert resolved.prompt_version == "v8"
     assert "MACHINE" in load_prompt(resolved.prompt_name, resolved.prompt_version).text
 
 
@@ -174,3 +174,10 @@ def test_the_prompt_states_that_order_is_checked() -> None:
 
 def test_the_prompt_forbids_planning_a_virtual_environment() -> None:
     assert "Never plan a step that creates a virtual environment" in prompt_text()
+
+
+def test_the_prompt_tells_the_model_a_task_asking_for_an_environment_is_already_met() -> None:
+    text = prompt_text()
+
+    assert "Treat that part of the task as already done." in text
+    assert "rejected, and so is a step that runs pip, venv, virtualenv or ensurepip" in text

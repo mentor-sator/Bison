@@ -8,6 +8,8 @@ from typing import Final, Literal
 
 from router_service.actions import (
     Action,
+    InstallPythonPackages,
+    OpenInEditor,
     RunPythonModule,
     WriteFile,
     installs_packages,
@@ -34,6 +36,14 @@ PROVISIONING_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"\bimport\s+(?:pip|venv|virtualenv|ensurepip)\b", re.IGNORECASE),
     re.compile(r"\bfrom\s+(?:pip|venv|virtualenv|ensurepip)(?:\.\w+)*\s+import\b", re.IGNORECASE),
 )
+
+INSTALL_VERBS: Final[frozenset[str]] = frozenset({"install"})
+
+NAME: Final[str] = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+EXTRAS: Final[str] = rf"(?:\[{NAME}(?:,{NAME})*\])?"
+CLAUSE: Final[str] = r"(?:===|==|!=|<=|>=|~=|<|>)[A-Za-z0-9.*+!_-]+"
+SPECIFIER: Final[str] = rf"(?:{CLAUSE}(?:,{CLAUSE})*)?"
+REQUIREMENT: Final[re.Pattern[str]] = re.compile(rf"{NAME}{EXTRAS}{SPECIFIER}")
 
 Disk = Callable[[str], Presence]
 
@@ -293,6 +303,50 @@ def provisions(content: str) -> bool:
     return any(pattern.search(content) for pattern in PROVISIONING_PATTERNS)
 
 
+def requested_packages(action: Action) -> tuple[str, ...] | None:
+    if not isinstance(action, RunPythonModule) or root_module(action.module) != "pip":
+        return None
+
+    arguments = [argument.strip() for argument in action.arguments if argument.strip()]
+
+    if not arguments or arguments[0] not in INSTALL_VERBS:
+        return None
+
+    named = arguments[1:]
+
+    if not named or not all(REQUIREMENT.fullmatch(entry) for entry in named):
+        return None
+
+    return tuple(named)
+
+
+def as_install(step: ProposedStep, packages: tuple[str, ...]) -> ProposedStep:
+    effects = replace(step.effects, network=True, installs_packages=True)
+
+    return replace(
+        step,
+        action=InstallPythonPackages(packages=packages),
+        effects=effects,
+    )
+
+
+def installed_through_the_runner(draft: RouterDraft) -> RouterDraft:
+    converted: list[ProposedStep] = []
+    changed = False
+
+    for step in draft.steps:
+        packages = requested_packages(step.action) if step.action is not None else None
+
+        if packages is None:
+            converted.append(step)
+            continue
+
+        converted.append(as_install(step, packages))
+        changed = True
+
+    return replace(draft, steps=converted) if changed else draft
+
+
 def self_provisioning(draft: RouterDraft) -> list[str]:
     problems: list[str] = []
 
@@ -330,6 +384,29 @@ def environment_left_alone(draft: RouterDraft) -> None:
     )
 
 
+def settled(draft: RouterDraft, root: list[str]) -> RouterDraft:
+    writers = first_writers(draft, root)
+    waiting: dict[int, list[ProposedStep]] = {}
+    ordered: list[ProposedStep] = []
+
+    for position, step in enumerate(draft.steps):
+        if isinstance(step.action, OpenInEditor):
+            key = identity(step.action.path, root)
+            writer = writers.get(key) if key is not None else None
+
+            if writer is not None and writer > position:
+                waiting.setdefault(writer, []).append(step)
+                continue
+
+        ordered.append(step)
+        ordered.extend(waiting.pop(position, []))
+
+    if ordered == draft.steps:
+        return draft
+
+    return replace(draft, steps=ordered)
+
+
 def sequence(draft: RouterDraft, root: list[str], disk: Disk) -> None:
     problems = out_of_order(draft, root, disk)
 
@@ -364,14 +441,17 @@ def build(
     if known and not any(step.criterion_refs for step in draft.steps):
         raise PlanRejectedError("the plan advances none of this task's acceptance criteria")
 
-    environment_left_alone(draft)
-    sequence(draft, root, disk)
+    installing = installed_through_the_runner(draft)
 
-    steps = [gate(step, position, root) for position, step in enumerate(draft.steps)]
+    environment_left_alone(installing)
+    ordered = settled(installing, root)
+    sequence(ordered, root, disk)
+
+    steps = [gate(step, position, root) for position, step in enumerate(ordered.steps)]
 
     return GatedPlan(
-        intent=draft.intent,
-        rationale=draft.rationale,
+        intent=ordered.intent,
+        rationale=ordered.rationale,
         steps=steps,
         gated_count=sum(1 for step in steps if step.requires_confirmation),
     )

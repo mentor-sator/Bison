@@ -177,8 +177,7 @@ async def run_step(step_id: str, body: RunBody) -> StreamingResponse:
     try:
         request = build_request(step_id, body.model_dump(exclude_none=True), body.scope_root)
         binding = runner.plan(request)
-        key = body.task_id if body.task_id else step_id
-        request = await runner.provision(request, key, binding)
+        request = await runner.provision(request, venvs.project_key(body.scope_root), binding)
     except ManifestUnavailableError as unavailable:
         raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
     except EnvironmentUnavailableError as unavailable:
@@ -265,7 +264,7 @@ async def install_step(step_id: str, body: InstallBody) -> StreamingResponse:
 
     try:
         uv = installs.installer()
-        venv = await venvs.ensure(runner.runtime_dir, body.task_id or step_id)
+        venv = await venvs.ensure(runner.runtime_dir, venvs.project_key(body.scope_root))
     except InstallerUnavailableError as unavailable:
         raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
     except EnvironmentUnavailableError as unavailable:

@@ -43,9 +43,9 @@ class Settings(BaseSettings):
     invoke_timeout_seconds: float = 600.0
     upstream_timeout_seconds: float = 30.0
     prompt_name: str = "router"
-    prompt_version: str = "v7"
+    prompt_version: str = "v8"
     context_budget_chars: int = 24000
-    repair_attempts: int = 1
+    repair_attempts: int = 2
     workspace_root: Path = Field(default_factory=default_workspace_root)
     data_dir: Path = Field(default_factory=default_data_dir)
 

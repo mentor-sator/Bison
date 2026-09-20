@@ -117,15 +117,16 @@ async def test_a_confirmed_install_streams_uv_output_then_a_result(
     assert recorded.commands[0][2:] == ["fastapi", "uvicorn[standard]"]
 
 
-async def test_the_install_goes_into_the_environment_of_its_task(
+async def test_the_install_goes_into_the_environment_of_its_project(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     recorded = fake_uv(monkeypatch, tmp_path, "pass")
 
     async with client:
         await client.post("/steps/s-1/install", json=body())
+        await client.post("/steps/s-2/install", json=body(task_id="t-2"))
 
-    assert recorded.keys == ["t-1"]
+    assert recorded.keys == [venvs.project_key(SCOPE), venvs.project_key(SCOPE)]
 
 
 async def test_a_failed_install_is_a_failed_result_not_an_http_error(

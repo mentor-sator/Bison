@@ -114,14 +114,66 @@ def test_writing_then_running_is_accepted() -> None:
     assert len(plan.steps) == 2
 
 
-def test_opening_before_the_write_is_refused_and_names_both_steps() -> None:
+def test_opening_before_the_write_is_moved_to_just_after_it() -> None:
+    plan = build(draft(opens(REQUIREMENTS), writes(REQUIREMENTS)), SCOPE, [CRITERION], nothing)
+
+    assert [step.service for step in plan.steps] == ["task-runner", "dev-env"]
+    assert [step.position for step in plan.steps] == [0, 1]
+
+
+def test_the_live_helper_plan_is_put_in_order_rather_than_refused() -> None:
+    helper = SCOPE + r"\db_helper.py"
+    plan = build(
+        draft(opens(helper), writes(helper, "import sqlite3\n"), installs()),
+        SCOPE,
+        [CRITERION],
+        nothing,
+    )
+
+    assert [step.description for step in plan.steps] == [
+        f"write {helper}",
+        f"open {helper}",
+        "install the packages",
+    ]
+
+
+def test_several_opens_waiting_on_one_write_keep_their_order() -> None:
+    other = SCOPE + r"\README.md"
+    plan = build(
+        draft(opens(REQUIREMENTS), opens(other), writes(other), writes(REQUIREMENTS)),
+        SCOPE,
+        [CRITERION],
+        nothing,
+    )
+
+    assert [step.description for step in plan.steps] == [
+        f"write {other}",
+        f"open {other}",
+        f"write {REQUIREMENTS}",
+        f"open {REQUIREMENTS}",
+    ]
+
+
+def test_an_open_already_after_its_write_stays_where_it_is() -> None:
+    steps = (writes(REQUIREMENTS), installs(), opens(REQUIREMENTS))
+    plan = build(draft(*steps), SCOPE, [CRITERION], nothing)
+
+    assert [step.description for step in plan.steps] == [step.description for step in steps]
+
+
+def test_a_run_before_its_write_is_never_moved_and_goes_back_to_the_model() -> None:
     with pytest.raises(PlanRejectedError) as raised:
-        build(draft(opens(REQUIREMENTS), writes(REQUIREMENTS)), SCOPE, [CRITERION], nothing)
+        build(draft(installs(), runs(SCRIPT), writes(SCRIPT)), SCOPE, [CRITERION], nothing)
 
     assert raised.value.detail == (
         "the plan uses files out of order: "
-        f"steps[0] opens {REQUIREMENTS} before steps[1] writes it; move the write earlier"
+        f"steps[1] runs {SCRIPT} before steps[2] writes it; move the write earlier"
     )
+
+
+def test_an_open_of_a_file_nothing_writes_is_still_refused() -> None:
+    with pytest.raises(PlanRejectedError, match="which no earlier step writes"):
+        build(draft(installs(), opens(REQUIREMENTS)), SCOPE, [CRITERION], nothing)
 
 
 def test_running_a_script_nothing_writes_is_refused() -> None:

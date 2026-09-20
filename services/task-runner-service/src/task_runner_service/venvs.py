@@ -5,7 +5,7 @@ import hashlib
 import os
 import shutil
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 VENV_DIRECTORY = "envs"
 
@@ -22,6 +22,8 @@ CREATE_TIMEOUT_SECONDS = 120
 SLUG_LENGTH = 40
 
 DIGEST_LENGTH = 12
+
+WORKSPACE_DIRECTORY = "workspace"
 
 _locks: dict[Path, asyncio.Lock] = {}
 
@@ -41,6 +43,19 @@ def slug(key: str) -> str:
     return f"{cleaned}-{digest}" if cleaned else digest
 
 
+def project_label(scope_root: str) -> str:
+    path = PureWindowsPath(scope_root)
+    owner = path.parent if path.name.lower() == WORKSPACE_DIRECTORY and path.parent.name else path
+
+    return owner.name or "project"
+
+
+def project_key(scope_root: str) -> str:
+    normalised = str(PureWindowsPath(scope_root)).rstrip("\\/").lower()
+
+    return f"{project_label(scope_root).lower()}@{normalised}"
+
+
 def home(root: Path, key: str) -> Path:
     return root / VENV_DIRECTORY / slug(key)
 
@@ -57,9 +72,7 @@ def executable() -> str:
     found = shutil.which("uv")
 
     if found is None:
-        raise EnvironmentUnavailableError(
-            "uv is not on PATH; per-task environments cannot be built"
-        )
+        raise EnvironmentUnavailableError("uv is not on PATH; project environments cannot be built")
 
     return found
 
