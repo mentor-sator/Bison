@@ -457,7 +457,7 @@ async def test_a_script_step_is_posted_to_run_as_bare_python() -> None:
     await client.close()
 
 
-async def test_an_install_step_is_posted_with_the_network_open() -> None:
+async def test_an_install_step_is_posted_to_the_runner_installer() -> None:
     recorder = Recorder([stream_response(ndjson(result_body()))])
     client = runner_for(recorder)
     step = to_step(step_body(action=install_action(), effects=effects_body(installs_packages=True)))
@@ -466,8 +466,10 @@ async def test_an_install_step_is_posted_with_the_network_open() -> None:
 
     body = recorder.sent()
 
-    assert body["arguments"] == ["-m", "pip", "install", "httpx"]
-    assert body["network"] is True
+    assert str(recorder.requests[-1].url).endswith(f"/steps/{step.step_id}/install")
+    assert body["packages"] == ["httpx"]
+    assert "program" not in body
+    assert "arguments" not in body
 
     await client.close()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ import win32job
 from bison_contracts import SandboxBackend
 
 from task_runner_service import integrity, ports, process
+from task_runner_service.baseline import launch_environment
 from task_runner_service.config import settings
 from task_runner_service.effects import observe, snapshot
 from task_runner_service.process import Launch
@@ -242,7 +244,7 @@ class JobObjectSandbox:
                 request.program,
                 request.arguments,
                 Path(request.working_directory),
-                request.environment,
+                launch_environment(request.environment, os.environ),
                 token,
             )
         except pywintypes.error as error:

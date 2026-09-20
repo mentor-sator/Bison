@@ -61,6 +61,10 @@ class Runner:
         self._bindings: dict[str, Binding] = {}
 
     @property
+    def runtime_dir(self) -> Path:
+        return self._runtime_dir
+
+    @property
     def active(self) -> dict[str, Binding]:
         return dict(self._bindings)
 

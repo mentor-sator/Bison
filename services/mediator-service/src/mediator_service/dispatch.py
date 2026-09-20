@@ -173,6 +173,13 @@ class Step:
         return isinstance(self.action, dict) and self.action.get("type") == resolve.WRITE_FILE
 
     @property
+    def installs(self) -> bool:
+        return (
+            isinstance(self.action, dict)
+            and self.action.get("type") == resolve.INSTALL_PYTHON_PACKAGES
+        )
+
+    @property
     def runnable(self) -> bool:
         return resolve.runnable(self.action)
 
@@ -482,6 +489,23 @@ class RunnerClient:
             "content": content_of(action),
         }
 
+    def install_body(
+        self, step: Step, scope_root: str, task_id: str, confirmed: bool
+    ) -> dict[str, Any]:
+        action = step.action if step.action is not None else {}
+        packages = resolve.strings(action, "packages", resolve.INSTALL_PYTHON_PACKAGES)
+
+        if not packages:
+            raise resolve.UnrunnableActionError("an install action must name at least one package")
+
+        return {
+            "scope_root": scope_root,
+            "task_id": task_id,
+            "step": step.raw,
+            "confirmed": confirmed,
+            "packages": list(packages),
+        }
+
     async def dispatch(
         self, step: Step, scope_root: str, task_id: str, confirmed: bool
     ) -> AsyncIterator[Event]:
@@ -491,6 +515,9 @@ class RunnerClient:
         if step.writes_file:
             path = f"/steps/{step.step_id}/write"
             payload = self.write_body(step, scope_root, task_id, confirmed)
+        elif step.installs:
+            path = f"/steps/{step.step_id}/install"
+            payload = self.install_body(step, scope_root, task_id, confirmed)
         else:
             path = f"/steps/{step.step_id}/run"
             payload = self.run_body(step, scope_root, task_id, confirmed)

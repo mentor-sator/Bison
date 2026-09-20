@@ -15,10 +15,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from task_runner_service import SERVICE_NAME
+from task_runner_service import SERVICE_NAME, installs, venvs
 from task_runner_service.backends import NoSandboxAvailableError
 from task_runner_service.config import settings
 from task_runner_service.execution import Runner, WorkspaceUnavailableError, build_request
+from task_runner_service.installs import (
+    Finished,
+    Installer,
+    InstallerUnavailableError,
+    InstallRefusedError,
+)
 from task_runner_service.manifest import ManifestUnavailableError
 from task_runner_service.sandbox import (
     InvalidSandboxRequestError,
@@ -39,6 +45,8 @@ app = FastAPI(title=SERVICE_NAME)
 halt_state = HaltState(SERVICE_NAME, BOUNDARY)
 
 runner = Runner()
+
+installer = Installer()
 
 
 class ResumeBody(BaseModel):
@@ -72,6 +80,14 @@ class WriteBody(BaseModel):
     content: str
 
 
+class InstallBody(BaseModel):
+    scope_root: str = Field(min_length=1)
+    task_id: str | None = None
+    step: dict[str, Any]
+    confirmed: bool = False
+    packages: list[str]
+
+
 class Health(BaseModel):
     service: str
     status: str
@@ -99,7 +115,7 @@ async def health() -> Health:
         boundary=BOUNDARY,
         halted=halt_state.halted,
         data_dir=str(settings().data_dir),
-        running=sorted(runner.active),
+        running=sorted([*runner.active, *installer.active]),
     )
 
 
@@ -124,6 +140,7 @@ async def halt(signal: HaltSignal) -> HaltAcknowledgement:
     acknowledgement = halt_state.accept(signal)
 
     await runner.terminate_all("halt")
+    installer.terminate_all("halt")
 
     return acknowledgement
 
@@ -210,3 +227,50 @@ async def write_step(step_id: str, body: WriteBody) -> StreamingResponse:
         yield encode(write_event(result))
 
     return StreamingResponse(single(), media_type=NDJSON)
+
+
+async def install_stream(
+    step_id: str, packages: list[str], arguments: list[str]
+) -> AsyncIterator[bytes]:
+    sequence = 0
+
+    async for item in installer.run(step_id, arguments):
+        if isinstance(item, Finished):
+            yield encode(
+                installs.result_event(step_id, packages, item, installs.INSTALL_TIMEOUT_SECONDS)
+            )
+        else:
+            yield encode(installs.output_event(step_id, sequence, item))
+            sequence += 1
+
+
+@app.post("/steps/{step_id}/install")
+async def install_step(step_id: str, body: InstallBody) -> StreamingResponse:
+    try:
+        halt_state.guard()
+    except HaltedError as halted:
+        raise HTTPException(status_code=409, detail=str(halted)) from halted
+
+    try:
+        assert_admissible(body.step, body.scope_root, body.confirmed)
+    except StepRefusedError as refused:
+        raise HTTPException(status_code=403, detail=str(refused)) from refused
+    except ScopeRootError as invalid:
+        raise HTTPException(status_code=422, detail=str(invalid)) from invalid
+
+    try:
+        packages = installs.requirements(body.packages)
+    except InstallRefusedError as refused:
+        raise HTTPException(status_code=422, detail=refused.detail) from refused
+
+    try:
+        uv = installs.installer()
+        venv = await venvs.ensure(runner.runtime_dir, body.task_id or step_id)
+    except InstallerUnavailableError as unavailable:
+        raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
+    except EnvironmentUnavailableError as unavailable:
+        raise HTTPException(status_code=503, detail=str(unavailable)) from unavailable
+
+    arguments = installs.command(uv, venv, packages)
+
+    return StreamingResponse(install_stream(step_id, packages, arguments), media_type=NDJSON)
