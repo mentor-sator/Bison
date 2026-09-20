@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path, PureWindowsPath
-from typing import Literal
+from typing import Final, Literal
 
 from router_service.actions import (
     Action,
+    RunPythonModule,
+    WriteFile,
     installs_packages,
     opened_paths,
     required_paths,
@@ -19,6 +22,18 @@ MAX_PATHS_NAMED = 3
 MAX_PROBLEMS_NAMED = 3
 
 Presence = Literal["file", "folder", "missing"]
+
+PROVISIONING_MODULES: Final[frozenset[str]] = frozenset({"pip", "venv", "virtualenv", "ensurepip"})
+
+SCRIPT_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".bat", ".cmd", ".ps1", ".sh"})
+
+PROVISIONING_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"\bpip3?(?:\.exe)?[\"']?\s*,?\s*[\"']?install\b", re.IGNORECASE),
+    re.compile(r"-m[\"']?\s*,?\s*[\"']?(?:pip|venv|virtualenv|ensurepip)\b", re.IGNORECASE),
+    re.compile(r"\b(?:venv|virtualenv)\s*\.\s*(?:create|EnvBuilder|cli_run)\b", re.IGNORECASE),
+    re.compile(r"\bimport\s+(?:pip|venv|virtualenv|ensurepip)\b", re.IGNORECASE),
+    re.compile(r"\bfrom\s+(?:pip|venv|virtualenv|ensurepip)(?:\.\w+)*\s+import\b", re.IGNORECASE),
+)
 
 Disk = Callable[[str], Presence]
 
@@ -266,6 +281,55 @@ def out_of_order(draft: RouterDraft, root: list[str], disk: Disk) -> list[str]:
     return problems
 
 
+def root_module(module: str) -> str:
+    return module.strip().split(".")[0].lower()
+
+
+def is_script(path: str) -> bool:
+    return PureWindowsPath(path).suffix.lower() in SCRIPT_SUFFIXES
+
+
+def provisions(content: str) -> bool:
+    return any(pattern.search(content) for pattern in PROVISIONING_PATTERNS)
+
+
+def self_provisioning(draft: RouterDraft) -> list[str]:
+    problems: list[str] = []
+
+    for position, step in enumerate(draft.steps):
+        action = step.action
+
+        if isinstance(action, RunPythonModule) and root_module(action.module) in (
+            PROVISIONING_MODULES
+        ):
+            problems.append(f"steps[{position}] runs the {root_module(action.module)} module")
+        elif (
+            isinstance(action, WriteFile) and is_script(action.path) and provisions(action.content)
+        ):
+            problems.append(
+                f"steps[{position}] writes {action.path}, a script that installs packages "
+                "or creates a virtual environment"
+            )
+
+    return problems
+
+
+def environment_left_alone(draft: RouterDraft) -> None:
+    problems = self_provisioning(draft)
+
+    if not problems:
+        return
+
+    named = "; ".join(problems[:MAX_PROBLEMS_NAMED])
+    remaining = len(problems) - min(len(problems), MAX_PROBLEMS_NAMED)
+    tail = f"; and {remaining} more" if remaining > 0 else ""
+
+    raise PlanRejectedError(
+        f"the plan builds its own Python environment: {named}{tail}. The task already has one; "
+        "add packages with an install_python_packages step and never create a virtual environment"
+    )
+
+
 def sequence(draft: RouterDraft, root: list[str], disk: Disk) -> None:
     problems = out_of_order(draft, root, disk)
 
@@ -300,6 +364,7 @@ def build(
     if known and not any(step.criterion_refs for step in draft.steps):
         raise PlanRejectedError("the plan advances none of this task's acceptance criteria")
 
+    environment_left_alone(draft)
     sequence(draft, root, disk)
 
     steps = [gate(step, position, root) for position, step in enumerate(draft.steps)]
