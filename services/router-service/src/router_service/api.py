@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -29,6 +30,7 @@ from router_service.upstream import (
     TaskNotFoundError,
     UpstreamError,
 )
+from router_service.workspace import scan
 
 SERVICE_NAME = "router-service"
 WORKSPACE_DIRNAME = "workspace"
@@ -219,6 +221,7 @@ async def plan_task(project_id: str, task_id: str, request_id: str | None = None
         machine=to_machine_facts(load_manifest()),
         brief=brief,
         history=history,
+        workspace=scan(Path(scope_root)),
     )
 
     correlation = request_id or str(uuid4())

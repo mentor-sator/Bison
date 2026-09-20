@@ -8,6 +8,7 @@ from router_service.context import (
     MachineFacts,
     RouterContext,
     TaskFacts,
+    WorkspaceFile,
     criterion_ids,
     render,
 )
@@ -25,6 +26,16 @@ MACHINE = MachineFacts(
         Capability(name="secrets", backend=None, strength="unavailable"),
     ],
 )
+
+
+WORKSPACE = [
+    WorkspaceFile(
+        path="db_helper.py",
+        size_bytes=1242,
+        names=["create_task", "select_all_tasks"],
+    ),
+    WorkspaceFile(path="README.md", size_bytes=88),
+]
 
 
 def criterion(index: int) -> Criterion:
@@ -55,6 +66,7 @@ def context(**overrides: object) -> RouterContext:
             assumptions=["amounts are in RWF"],
         ),
         "history": [HistoryEntry(title=f"Earlier task {n}", state="done") for n in range(12)],
+        "workspace": list(WORKSPACE),
     }
     base.update(overrides)
 
@@ -67,6 +79,7 @@ def test_renders_every_section() -> None:
     assert "TASK" in rendered
     assert "ACCEPTANCE CRITERIA" in rendered
     assert "WORKING DIRECTORY" in rendered
+    assert "WORKSPACE FILES" in rendered
     assert "MACHINE" in rendered
     assert "PROJECT" in rendered
     assert "RECENT TASKS" in rendered
@@ -181,3 +194,73 @@ def test_a_long_description_is_truncated_rather_than_dropped() -> None:
 
 def test_criterion_ids_matches_what_was_rendered() -> None:
     assert criterion_ids(context()) == ["c1", "c2"]
+
+
+def test_a_workspace_file_carries_its_size_and_the_names_it_defines() -> None:
+    rendered = render(context())
+
+    assert "- db_helper.py (1242 bytes) defines create_task, select_all_tasks" in rendered
+
+
+def test_a_workspace_file_with_no_names_carries_only_its_size() -> None:
+    assert "- README.md (88 bytes)\n" in render(context())
+
+
+def test_the_workspace_says_how_many_files_it_lists() -> None:
+    assert "WORKSPACE FILES (2 of 2)" in render(context())
+
+
+def test_an_empty_workspace_says_the_directory_is_empty() -> None:
+    rendered = render(context(workspace=[]))
+
+    assert "the working directory is empty" in rendered
+    assert "WORKING DIRECTORY" in rendered
+
+
+def test_a_long_name_list_is_cut_with_a_count() -> None:
+    crowded = [
+        WorkspaceFile(
+            path="models.py",
+            size_bytes=4096,
+            names=[f"name{index}" for index in range(20)],
+        )
+    ]
+    rendered = render(context(workspace=crowded))
+
+    assert "name0" in rendered
+    assert "and 8 more" in rendered
+    assert "name19" not in rendered
+
+
+def test_the_workspace_survives_a_budget_that_kills_all_history() -> None:
+    full = context()
+    squeezed = render(full, budget=len(render(full)) - 200)
+
+    assert "db_helper.py" in squeezed
+    assert "Earlier task 11" not in squeezed
+
+
+def test_the_workspace_shrinks_only_once_history_is_gone() -> None:
+    many = context(
+        workspace=[
+            WorkspaceFile(path=f"file{index:02d}.py", size_bytes=100, names=["run"])
+            for index in range(30)
+        ]
+    )
+    squeezed = render(many, budget=1500)
+
+    assert "RECENT TASKS" not in squeezed
+    assert "WORKSPACE FILES (16 of 30)" in squeezed
+
+
+def test_a_workspace_too_large_for_the_budget_says_it_was_not_listed() -> None:
+    many = context(
+        workspace=[
+            WorkspaceFile(path=f"file{index:02d}.py", size_bytes=100, names=["run"])
+            for index in range(30)
+        ]
+    )
+    squeezed = render(many, budget=800)
+
+    assert "WORKSPACE FILES (0 of 30)" in squeezed
+    assert "c1" in squeezed

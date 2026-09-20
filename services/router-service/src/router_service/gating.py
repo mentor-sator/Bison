@@ -11,6 +11,7 @@ from router_service.actions import (
     InstallPythonPackages,
     OpenInEditor,
     RunPythonModule,
+    RunPythonScript,
     WriteFile,
     installs_packages,
     opened_paths,
@@ -44,6 +45,21 @@ EXTRAS: Final[str] = rf"(?:\[{NAME}(?:,{NAME})*\])?"
 CLAUSE: Final[str] = r"(?:===|==|!=|<=|>=|~=|<|>)[A-Za-z0-9.*+!_-]+"
 SPECIFIER: Final[str] = rf"(?:{CLAUSE}(?:,{CLAUSE})*)?"
 REQUIREMENT: Final[re.Pattern[str]] = re.compile(rf"{NAME}{EXTRAS}{SPECIFIER}")
+
+RESERVED_PORT_LOW: Final[int] = 8000
+RESERVED_PORT_HIGH: Final[int] = 9000
+SUGGESTED_PORT: Final[int] = 9101
+
+PORT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"(?<![A-Za-z])port[\"']?\s*[=:]\s*[\"']?(\d{2,5})", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z])port\s*:\s*int\s*=\s*(\d{2,5})", re.IGNORECASE),
+    re.compile(r"--port[=\s]+[\"']?(\d{2,5})", re.IGNORECASE),
+    re.compile(r"(?:127\.0\.0\.1|0\.0\.0\.0|localhost):(\d{2,5})", re.IGNORECASE),
+    re.compile(r"\.listen\(\s*(\d{2,5})"),
+    re.compile(r"\bbind\(\s*\(\s*[\"'][^\"']*[\"']\s*,\s*(\d{2,5})"),
+)
+
+PORT_NUMBER: Final[re.Pattern[str]] = re.compile(r"\d{2,5}")
 
 Disk = Callable[[str], Presence]
 
@@ -384,6 +400,81 @@ def environment_left_alone(draft: RouterDraft) -> None:
     )
 
 
+def reserved(value: int) -> bool:
+    return RESERVED_PORT_LOW <= value <= RESERVED_PORT_HIGH
+
+
+def reserved_in(text: str) -> list[int]:
+    found: list[int] = []
+
+    for pattern in PORT_PATTERNS:
+        for match in pattern.finditer(text):
+            value = int(match.group(1))
+
+            if reserved(value) and value not in found:
+                found.append(value)
+
+    return found
+
+
+def reserved_arguments(arguments: tuple[str, ...]) -> list[int]:
+    found: list[int] = []
+
+    for argument in arguments:
+        stripped = argument.strip()
+        bare = PORT_NUMBER.fullmatch(stripped)
+        values = [int(stripped)] if bare else reserved_in(stripped)
+
+        for value in values:
+            if reserved(value) and value not in found:
+                found.append(value)
+
+    return found
+
+
+def occupied(step: ProposedStep, position: int) -> list[str]:
+    action = step.action
+
+    if isinstance(action, WriteFile):
+        return [
+            f"steps[{position}] writes {action.path}, which binds port {port}"
+            for port in reserved_in(action.content)
+        ]
+
+    if isinstance(action, RunPythonModule):
+        return [
+            f"steps[{position}] runs the {action.module} module on port {port}"
+            for port in reserved_arguments(action.arguments)
+        ]
+
+    if isinstance(action, RunPythonScript):
+        return [
+            f"steps[{position}] runs {action.script_path} on port {port}"
+            for port in reserved_arguments(action.arguments)
+        ]
+
+    return []
+
+
+def ports_left_free(draft: RouterDraft) -> None:
+    problems = [
+        problem for position, step in enumerate(draft.steps) for problem in occupied(step, position)
+    ]
+
+    if not problems:
+        return
+
+    named = "; ".join(problems[:MAX_PROBLEMS_NAMED])
+    remaining = len(problems) - min(len(problems), MAX_PROBLEMS_NAMED)
+    tail = f"; and {remaining} more" if remaining > 0 else ""
+
+    raise PlanRejectedError(
+        f"the plan takes a port BISON is using: {named}{tail}. Ports {RESERVED_PORT_LOW} to "
+        f"{RESERVED_PORT_HIGH} belong to BISON's own services on this machine; bind a port "
+        f"above {RESERVED_PORT_HIGH}, such as {SUGGESTED_PORT}"
+    )
+
+
 def settled(draft: RouterDraft, root: list[str]) -> RouterDraft:
     writers = first_writers(draft, root)
     waiting: dict[int, list[ProposedStep]] = {}
@@ -444,6 +535,7 @@ def build(
     installing = installed_through_the_runner(draft)
 
     environment_left_alone(installing)
+    ports_left_free(installing)
     ordered = settled(installing, root)
     sequence(ordered, root, disk)
 

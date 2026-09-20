@@ -6,9 +6,19 @@ MAX_STATEMENT_CHARS = 500
 MAX_DESCRIPTION_CHARS = 4000
 MAX_NOTE_CHARS = 500
 MAX_HISTORY_ENTRIES = 12
+MAX_WORKSPACE_FILES = 40
+MAX_NAMES_PER_FILE = 12
 MAX_CONTEXT_CHARS = 24000
 
-HISTORY_STEPS = (MAX_HISTORY_ENTRIES, 6, 3, 0)
+SHRINK_STEPS = (
+    (MAX_HISTORY_ENTRIES, MAX_WORKSPACE_FILES),
+    (6, MAX_WORKSPACE_FILES),
+    (3, MAX_WORKSPACE_FILES),
+    (0, MAX_WORKSPACE_FILES),
+    (0, 16),
+    (0, 6),
+    (0, 0),
+)
 
 NO_BACKEND = "none"
 
@@ -62,6 +72,13 @@ class HistoryEntry:
 
 
 @dataclass(frozen=True)
+class WorkspaceFile:
+    path: str
+    size_bytes: int
+    names: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class RouterContext:
     task: TaskFacts
     criteria: list[Criterion]
@@ -69,6 +86,7 @@ class RouterContext:
     machine: MachineFacts
     brief: BriefFacts | None = None
     history: list[HistoryEntry] = field(default_factory=list)
+    workspace: list[WorkspaceFile] = field(default_factory=list)
 
 
 def clip(value: str, limit: int) -> str:
@@ -99,6 +117,37 @@ def render_history(entry: HistoryEntry) -> str:
     return line
 
 
+def render_names(names: list[str]) -> str:
+    if not names:
+        return ""
+
+    shown = names[:MAX_NAMES_PER_FILE]
+    remaining = len(names) - len(shown)
+    listed = ", ".join(shown)
+
+    return f" defines {listed} and {remaining} more" if remaining > 0 else f" defines {listed}"
+
+
+def render_workspace_file(entry: WorkspaceFile) -> str:
+    path = clip(entry.path, MAX_NOTE_CHARS)
+
+    return f"- {path} ({entry.size_bytes} bytes){render_names(entry.names)}"
+
+
+def render_workspace(files: list[WorkspaceFile], listed: int) -> str:
+    if not files:
+        return "WORKSPACE FILES\nthe working directory is empty"
+
+    shown = files[:listed]
+
+    if not shown:
+        return f"WORKSPACE FILES (0 of {len(files)})\nnot listed, to stay inside the budget"
+
+    heading = f"WORKSPACE FILES ({len(shown)} of {len(files)})"
+
+    return "\n".join([heading, *[render_workspace_file(entry) for entry in shown]])
+
+
 def render_capability(capability: Capability) -> str:
     backend = capability.backend if capability.backend else NO_BACKEND
 
@@ -117,7 +166,7 @@ def render_machine(machine: MachineFacts) -> list[str]:
     return lines
 
 
-def sections(context: RouterContext, history_entries: int) -> list[str]:
+def sections(context: RouterContext, history_entries: int, workspace_files: int) -> list[str]:
     task = context.task
 
     facts = [
@@ -138,6 +187,7 @@ def sections(context: RouterContext, history_entries: int) -> list[str]:
         blocks.append("ACCEPTANCE CRITERIA\nnone recorded for this task")
 
     blocks.append(f"WORKING DIRECTORY\n{context.scope_root}")
+    blocks.append(render_workspace(context.workspace, workspace_files))
     blocks.append("\n".join(["MACHINE", *render_machine(context.machine)]))
 
     if context.brief is not None:
@@ -168,13 +218,14 @@ def sections(context: RouterContext, history_entries: int) -> list[str]:
 
 
 def render(context: RouterContext, budget: int = MAX_CONTEXT_CHARS) -> str:
-    rendered = "\n\n".join(sections(context, HISTORY_STEPS[0]))
+    history_entries, workspace_files = SHRINK_STEPS[0]
+    rendered = "\n\n".join(sections(context, history_entries, workspace_files))
 
-    for history_entries in HISTORY_STEPS[1:]:
+    for history_entries, workspace_files in SHRINK_STEPS[1:]:
         if len(rendered) <= budget:
             return rendered
 
-        rendered = "\n\n".join(sections(context, history_entries))
+        rendered = "\n\n".join(sections(context, history_entries, workspace_files))
 
     return rendered if len(rendered) <= budget else clip(rendered, budget)
 
