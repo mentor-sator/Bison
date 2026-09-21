@@ -28,6 +28,7 @@ from mediator_service.dispatch import (
     UnroutableStepError,
 )
 from mediator_service.events import Emitter
+from mediator_service.inspection import INSPECTION_FAILURES, Inspection, InspectorClient
 from mediator_service.persist import ProjectServiceError, ProjectServiceUnreachableError
 from mediator_service.resolve import UnrunnableActionError
 from mediator_service.upstream import Outcome, ProjectClient, Task
@@ -83,6 +84,7 @@ class Clients:
     runner: RunnerClient
     dev_env: DevEnvClient
     project: ProjectClient
+    inspector: InspectorClient | None = None
 
     def executor(self, step: Step) -> Executor:
         if step.service == TASK_RUNNER_SERVICE:
@@ -98,6 +100,9 @@ class Clients:
         await self.runner.close()
         await self.dev_env.close()
         await self.project.close()
+
+        if self.inspector is not None:
+            await self.inspector.close()
 
 
 @dataclass(frozen=True)
@@ -188,6 +193,7 @@ class TaskPass:
         self.state = FAILED
         self.reason: str | None = NOT_RUN
         self.awaiting_step_id: str | None = None
+        self.inspection: Inspection | None = None
 
     @property
     def results(self) -> tuple[Result, ...]:
@@ -210,7 +216,8 @@ class TaskPass:
             self.reason = str(failure)
 
         try:
-            await self._conclude()
+            async for chunk in self._conclude():
+                yield chunk
         except UPSTREAM_FAILURES as failure:
             self.state = FAILED
             self.reason = str(failure)
@@ -453,9 +460,13 @@ class TaskPass:
                 )
             )
 
-    async def _conclude(self) -> None:
+    async def _conclude(self) -> AsyncIterator[bytes]:
         if self.state == COMPLETED:
             await self._clients.project.move_task(self._task.id, VERIFYING, None)
+
+            async for chunk in self._inspect():
+                yield chunk
+
             await self._clients.project.move_task(self._task.id, DONE, None)
 
             return
@@ -469,6 +480,32 @@ class TaskPass:
             await self._clients.project.move_task(
                 self._task.id, TASK_FAILED, self.reason or NOT_RUN
             )
+
+    async def _inspect(self) -> AsyncIterator[bytes]:
+        inspector = self._clients.inspector
+
+        if inspector is None:
+            return
+
+        try:
+            inspection = await inspector.inspect_task(self._project_id, self._task.id)
+        except INSPECTION_FAILURES as failure:
+            yield self._emitter.emit(events.inspection_unavailable(self._task.id, str(failure)))
+
+            return
+
+        self.inspection = inspection
+
+        yield self._emitter.emit(
+            events.task_inspected(
+                self._task.id,
+                inspection.verified,
+                inspection.failed,
+                inspection.inconclusive,
+                inspection.changed,
+                [verdict.payload() for verdict in inspection.verdicts],
+            )
+        )
 
     async def _percentages(self) -> tuple[float, float]:
         try:

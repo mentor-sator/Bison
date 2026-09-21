@@ -30,6 +30,7 @@ export const config = {
   bootstrapUrl: urlFromEnv("BISON_BOOTSTRAP_URL", "http://127.0.0.1:8200"),
   brokerUrl: urlFromEnv("BISON_MODEL_BROKER_URL", "http://127.0.0.1:8300"),
   projectUrl: urlFromEnv("BISON_PROJECT_SERVICE_URL", "http://127.0.0.1:8400"),
+  inspectorUrl: urlFromEnv("BISON_INSPECTOR_URL", "http://127.0.0.1:8450"),
   mediatorUrl: urlFromEnv("BISON_MEDIATOR_URL", "http://127.0.0.1:8700"),
   taskRunnerUrl: urlFromEnv("BISON_TASK_RUNNER_URL", "http://127.0.0.1:8800"),
   automationUrl: urlFromEnv("BISON_AUTOMATION_URL", "http://127.0.0.1:8900"),

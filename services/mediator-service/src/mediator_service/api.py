@@ -25,6 +25,7 @@ from mediator_service.context import BriefFacts, MediatorContext
 from mediator_service.discipline import TreeRejectedError
 from mediator_service.dispatch import DevEnvClient, RouterClient, RunnerClient
 from mediator_service.execution import Clients, Resumption
+from mediator_service.inspection import InspectorClient
 from mediator_service.loop import RunLoop
 from mediator_service.manifest import (
     ManifestUnavailableError,
@@ -72,6 +73,7 @@ class Health(BaseModel):
     router_service: str
     task_runner: str
     dev_env: str
+    inspector: str
 
 
 class TaskRead(BaseModel):
@@ -233,6 +235,7 @@ async def health() -> Health:
         router_service=resolved.router_service_url,
         task_runner=resolved.task_runner_url,
         dev_env=resolved.dev_env_url,
+        inspector=resolved.inspector_url,
     )
 
 
@@ -329,6 +332,11 @@ def clients_for_run() -> Clients:
         ),
         project=UpstreamProjectClient(
             resolved.project_service_url, resolved.upstream_timeout_seconds
+        ),
+        inspector=InspectorClient(
+            resolved.inspector_url,
+            resolved.inspect_timeout_seconds,
+            resolved.connect_timeout_seconds,
         ),
     )
 

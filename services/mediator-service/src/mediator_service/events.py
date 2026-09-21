@@ -127,6 +127,33 @@ def criterion_settled(
     }
 
 
+def task_inspected(
+    task_id: str,
+    verified: int,
+    failed: int,
+    inconclusive: int,
+    changed: int,
+    verdicts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "event": "task_inspected",
+        "task_id": task_id,
+        "verified": verified,
+        "failed": failed,
+        "inconclusive": inconclusive,
+        "changed": changed,
+        "verdicts": verdicts,
+    }
+
+
+def inspection_unavailable(task_id: str, detail: str) -> dict[str, Any]:
+    return {
+        "event": "inspection_unavailable",
+        "task_id": task_id,
+        "detail": detail,
+    }
+
+
 def task_finished(
     task_id: str,
     state: str,

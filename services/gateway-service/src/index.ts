@@ -21,6 +21,12 @@ import {
 import { config } from "./config.js";
 import { broadcast, isHaltReason, readState, resumeAll } from "./halt.js";
 import {
+  InspectorError,
+  inspectProject,
+  inspectTask,
+  inspectorHealthy,
+} from "./inspector-client.js";
+import {
   MediatorError,
   buildTree,
   mediatorHealthy,
@@ -155,6 +161,23 @@ export function buildServer() {
     }
   };
 
+  const viaInspector = async <T>(
+    reply: FastifyReply,
+    run: () => Promise<T>,
+  ): Promise<T | FastifyReply> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof InspectorError) {
+        app.log.warn({ status: error.status, detail: error.detail }, "inspector refused");
+        return reply.status(error.status).send({ error: error.detail });
+      }
+
+      app.log.error({ err: error }, "inspector unreachable");
+      return reply.status(503).send({ error: "inspector-service unavailable" });
+    }
+  };
+
   app.get("/health", async () => ({
     service: SERVICE_NAME,
     status: "ok",
@@ -163,6 +186,7 @@ export function buildServer() {
     model_broker: (await brokerHealthy()) ? "ok" : "unreachable",
     project_service: (await projectHealthy()) ? "ok" : "unreachable",
     mediator: (await mediatorHealthy()) ? "ok" : "unreachable",
+    inspector: (await inspectorHealthy()) ? "ok" : "unreachable",
   }));
 
   app.get("/messages", async () => listMessages());
@@ -299,6 +323,16 @@ export function buildServer() {
   app.get("/projects/:projectId/progress", async (request, reply) => {
     const params = request.params as { projectId: string };
     return viaProject(reply, () => fetchProgress(params.projectId));
+  });
+
+  app.post("/projects/:projectId/inspect", async (request, reply) => {
+    const params = request.params as { projectId: string };
+    return viaInspector(reply, () => inspectProject(params.projectId));
+  });
+
+  app.post("/projects/:projectId/tasks/:taskId/inspect", async (request, reply) => {
+    const params = request.params as { projectId: string; taskId: string };
+    return viaInspector(reply, () => inspectTask(params.projectId, params.taskId));
   });
 
   app.post("/projects/:projectId/tasks", async (request, reply) => {

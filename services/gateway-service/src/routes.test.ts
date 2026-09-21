@@ -3,6 +3,12 @@ import { bootstrapHealthy } from "./bootstrap-client.js";
 import { brokerHealthy } from "./broker-client.js";
 import { readState } from "./halt.js";
 import { buildServer } from "./index.js";
+import {
+  InspectorError,
+  inspectProject,
+  inspectTask,
+  inspectorHealthy,
+} from "./inspector-client.js";
 import { mediatorHealthy } from "./mediator-client.js";
 import {
   ProjectError,
@@ -41,6 +47,13 @@ vi.mock("./project-client.js", async (importActual) => ({
   moveTask: vi.fn(),
 }));
 
+vi.mock("./inspector-client.js", async (importActual) => ({
+  ...(await importActual<typeof import("./inspector-client.js")>()),
+  inspectorHealthy: vi.fn(),
+  inspectProject: vi.fn(),
+  inspectTask: vi.fn(),
+}));
+
 vi.mock("./halt.js", async (importActual) => ({
   ...(await importActual<typeof import("./halt.js")>()),
   readState: vi.fn(),
@@ -75,6 +88,7 @@ beforeEach(() => {
   vi.mocked(brokerHealthy).mockResolvedValue(false);
   vi.mocked(projectHealthy).mockResolvedValue(true);
   vi.mocked(mediatorHealthy).mockResolvedValue(true);
+  vi.mocked(inspectorHealthy).mockResolvedValue(false);
 });
 
 describe("GET /health", () => {
@@ -91,6 +105,7 @@ describe("GET /health", () => {
       model_broker: "unreachable",
       project_service: "ok",
       mediator: "ok",
+      inspector: "unreachable",
     });
   });
 });
@@ -188,6 +203,87 @@ describe("GET /tasks/:taskId/plan", () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ error: "project-service unavailable" });
+  });
+});
+
+describe("POST inspections", () => {
+  const report = {
+    project_id: "p1",
+    workspace: "C:\\workspace",
+    inspected_at: "2026-09-21T10:00:00+00:00",
+    verified: 1,
+    failed: 0,
+    inconclusive: 1,
+    changed: 1,
+    results: [
+      {
+        criterion_id: "c1",
+        task_id: "t1",
+        statement: "main.py exists",
+        check_kind: "deterministic",
+        verdict: "verified",
+        reasoning: "the file is there",
+        evidence: [{ kind: "file_hash", excerpt: "sha256 a1b2" }],
+        status_before: "unverified",
+        status_after: "verified",
+      },
+      {
+        criterion_id: "c2",
+        task_id: "t1",
+        statement: "port 9101 answers",
+        check_kind: "deterministic",
+        verdict: "inconclusive",
+        reasoning: "nothing answered yet",
+        evidence: [],
+        status_before: "unverified",
+        status_after: "unverified",
+      },
+    ],
+  };
+
+  it("inspects a whole project and returns every verdict", async () => {
+    vi.mocked(inspectProject).mockResolvedValue(report);
+
+    const response = await withServer((app) =>
+      app.inject({ method: "POST", url: "/projects/p1/inspect" }),
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(report);
+    expect(vi.mocked(inspectProject)).toHaveBeenCalledWith("p1");
+  });
+
+  it("inspects one task of a project", async () => {
+    vi.mocked(inspectTask).mockResolvedValue(report);
+
+    const response = await withServer((app) =>
+      app.inject({ method: "POST", url: "/projects/p1/tasks/t1/inspect" }),
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(vi.mocked(inspectTask)).toHaveBeenCalledWith("p1", "t1");
+  });
+
+  it("keeps a refusal's status and detail", async () => {
+    vi.mocked(inspectTask).mockRejectedValue(new InspectorError(404, "t9"));
+
+    const response = await withServer((app) =>
+      app.inject({ method: "POST", url: "/projects/p1/tasks/t9/inspect" }),
+    );
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "t9" });
+  });
+
+  it("answers 503 when the inspector is unreachable", async () => {
+    vi.mocked(inspectProject).mockRejectedValue(new Error("connect ECONNREFUSED"));
+
+    const response = await withServer((app) =>
+      app.inject({ method: "POST", url: "/projects/p1/inspect" }),
+    );
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ error: "inspector-service unavailable" });
   });
 });
 

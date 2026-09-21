@@ -30,11 +30,13 @@ class Settings(BaseSettings):
     router_service_url: str = "http://127.0.0.1:8600"
     task_runner_url: str = "http://127.0.0.1:8800"
     dev_env_url: str = "http://127.0.0.1:9000"
+    inspector_url: str = "http://127.0.0.1:8450"
     connect_timeout_seconds: float = 5.0
     invoke_timeout_seconds: float = 900.0
     upstream_timeout_seconds: float = 30.0
     run_timeout_seconds: float = 1800.0
     dev_env_timeout_seconds: float = 120.0
+    inspect_timeout_seconds: float = 120.0
     engine_prompt_name: str = "engine"
     engine_prompt_version: str = "v1"
     mediator_prompt_name: str = "mediator"
