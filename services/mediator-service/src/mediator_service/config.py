@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     engine_prompt_name: str = "engine"
     engine_prompt_version: str = "v1"
     mediator_prompt_name: str = "mediator"
-    mediator_prompt_version: str = "v2"
+    mediator_prompt_version: str = "v3"
     context_budget_chars: int = 24000
     repair_attempts: int = 2
     data_dir: Path = Field(default_factory=default_data_dir)

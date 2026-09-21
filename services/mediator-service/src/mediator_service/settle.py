@@ -21,6 +21,8 @@ NO_EVIDENCE: Final[str] = "no step in this task produced evidence for this crite
 
 LOCAL_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
+WORKSPACE_PLACEHOLDER: Final[str] = "<workspace>"
+
 OBSERVED_ELSEWHERE: Final[frozenset[str]] = frozenset(
     {"http_status", "sql_result", "window_title", "text_on_screen"}
 )
@@ -51,6 +53,9 @@ def rooted(path: str) -> bool:
 def resolved(path: str, scope_root: str) -> str:
     target = normalise(path)
 
+    if target.startswith(WORKSPACE_PLACEHOLDER):
+        target = target[len(WORKSPACE_PLACEHOLDER) :].lstrip("/")
+
     while target.startswith("./"):
         target = target[2:]
 
@@ -58,6 +63,9 @@ def resolved(path: str, scope_root: str) -> str:
         return target
 
     root = normalise(scope_root)
+
+    if not target:
+        return root
 
     return f"{root}/{target}" if root else target
 
