@@ -92,8 +92,27 @@ def test_the_prompt_asks_for_one_claim_per_criterion() -> None:
     assert "one thing per criterion" in prompt_text()
 
 
-def test_the_service_is_configured_with_the_prompt_that_knows_bison_s_ports() -> None:
-    assert settings().mediator_prompt_version == "v3"
+def test_the_service_is_configured_with_the_prompt_that_states_sql_semantics() -> None:
+    assert settings().mediator_prompt_version == "v4"
+
+
+def test_the_prompt_says_expect_is_the_exact_first_value() -> None:
+    text = prompt_text()
+
+    assert "compares the first value of the first row with expect as exact text" in text
+    assert '"query": "SELECT COUNT(*) FROM tasks", "expect": "3"' in text
+    assert "Never write a comparison or a description in expect" in text
+
+
+def test_the_prompt_says_connection_ref_is_a_relative_sqlite_path() -> None:
+    assert "connection_ref is the path of the SQLite database file" in prompt_text()
+
+
+def test_the_prompt_keeps_sequential_tasks_as_siblings() -> None:
+    text = prompt_text()
+
+    assert "Give a task a parent only to split one larger task into smaller pieces" in text
+    assert "each keeps parent_ref null and names the tasks it waits for in depends_on" in text
 
 
 def test_no_example_in_the_prompt_uses_a_port_bison_reserves() -> None:

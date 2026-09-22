@@ -131,6 +131,17 @@ UNEXPRESSIBLE: Final[frozenset[str]] = frozenset(
 
 COMPOUND: Final[frozenset[str]] = frozenset({"and", "then", "as well as", "along with"})
 
+PATH_PHRASE: Final[re.Pattern[str]] = re.compile(r"\bworking (directory|folder|dir|tree)\b")
+NEUTRAL_PATH: Final[str] = "workspace"
+
+COMPARISON: Final[re.Pattern[str]] = re.compile(
+    r"[<>=!]|\brow_?count\b|\brows?\b|\b(at least|at most|more than|fewer than|less than|"
+    r"greater than|non-?empty|not empty|exists|present|any)\b",
+    re.IGNORECASE,
+)
+SUGGESTED_QUERY: Final[str] = "SELECT COUNT(*) FROM tasks"
+SUGGESTED_EXPECT: Final[str] = "3"
+
 EXTENSION: Final[re.Pattern[str]] = re.compile(
     r"\S+\.(py|ts|tsx|js|json|toml|yaml|yml|md|sql|csv|log|exe|zip|db|sqlite|cfg|ini|env)\b"
 )
@@ -148,6 +159,10 @@ def normalise(statement: str) -> str:
     cleaned = re.sub(r"[^a-z0-9./:\\_-]+", " ", statement.lower())
 
     return f" {cleaned.strip()} "
+
+
+def neutralised(text: str) -> str:
+    return PATH_PHRASE.sub(NEUTRAL_PATH, text)
 
 
 def first_match(text: str, phrases: frozenset[str]) -> str | None:
@@ -205,6 +220,13 @@ def inside_environment(path: str) -> bool:
     return any(segment in ENVIRONMENT_SEGMENTS for segment in re.split(r"[\\/]+", path.lower()))
 
 
+def unliteral(spec: CheckSpec) -> str | None:
+    if not isinstance(spec, SqlResult):
+        return None
+
+    return spec.expect if COMPARISON.search(spec.expect) is not None else None
+
+
 def spec_findings(criterion: DraftCriterion, label: str) -> list[str]:
     spec = criterion.check_spec
 
@@ -229,6 +251,15 @@ def spec_findings(criterion: DraftCriterion, label: str) -> list[str]:
             "there instead"
         )
 
+    expected = unliteral(spec)
+
+    if expected is not None:
+        collected.append(
+            f"{label} expects {expected!r}, but a sql_result passes only when the first value of "
+            "the first row equals expect exactly; select the value itself, such as "
+            f"{SUGGESTED_QUERY} with expect {SUGGESTED_EXPECT}"
+        )
+
     return collected
 
 
@@ -245,7 +276,7 @@ def criterion_findings(task: DraftTask, criterion: DraftCriterion, index: int) -
             "built; state the observable result instead"
         )
 
-    vague = first_match(text, VAGUE)
+    vague = first_match(neutralised(text), VAGUE)
 
     if vague is not None:
         collected.append(

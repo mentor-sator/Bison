@@ -27,6 +27,13 @@ export interface Decomposition {
   tasks: TreeTask[];
 }
 
+const UNBOUNDED = { headersTimeout: 0, bodyTimeout: 0 } as const;
+
+interface Waits {
+  headersTimeout?: number;
+  bodyTimeout?: number;
+}
+
 export class MediatorError extends Error {
   constructor(
     readonly status: number,
@@ -53,8 +60,8 @@ function withRequestId(path: string, requestId: string | null): string {
   return requestId === null ? path : `${path}?request_id=${encodeURIComponent(requestId)}`;
 }
 
-async function send<T>(method: "GET" | "POST", path: string): Promise<T> {
-  const response = await request(`${config.mediatorUrl}${path}`, { method });
+async function send<T>(method: "GET" | "POST", path: string, waits: Waits = {}): Promise<T> {
+  const response = await request(`${config.mediatorUrl}${path}`, { method, ...waits });
   const text = await response.body.text();
 
   if (response.statusCode >= 400) {
@@ -67,8 +74,7 @@ async function send<T>(method: "GET" | "POST", path: string): Promise<T> {
 async function openStream(path: string): Promise<Readable> {
   const response = await request(`${config.mediatorUrl}${path}`, {
     method: "POST",
-    headersTimeout: 0,
-    bodyTimeout: 0,
+    ...UNBOUNDED,
   });
 
   if (response.statusCode >= 400) {
@@ -86,6 +92,7 @@ export async function buildTree(
   return send<Decomposition>(
     "POST",
     withRequestId(`/projects/${encodeURIComponent(projectId)}/tree`, requestId),
+    UNBOUNDED,
   );
 }
 
