@@ -185,6 +185,7 @@ def run_finished(
     tasks_failed: int,
     tasks_total: int,
     project_percentage: float,
+    detail: str | None = None,
 ) -> dict[str, Any]:
     return {
         "event": "run_finished",
@@ -192,6 +193,7 @@ def run_finished(
         "tasks_failed": tasks_failed,
         "tasks_total": tasks_total,
         "project_percentage": project_percentage,
+        "detail": detail,
     }
 
 

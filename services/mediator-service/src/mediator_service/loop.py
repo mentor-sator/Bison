@@ -23,8 +23,37 @@ from mediator_service.upstream import Outcome, Task
 DONE: Final[str] = "done"
 SETTLED_STATES: Final[frozenset[str]] = frozenset({"done", "failed", "skipped", "ignored"})
 
+SETTLED_ORDER: Final[tuple[str, ...]] = ("done", "failed", "skipped", "ignored")
+
 DEFAULT_HALT_REASON: Final[str] = "user_stop"
 NO_TASKS: Final[str] = "this project has no tasks to run"
+RESET_HINT: Final[str] = "set a task back to ready to run it again"
+
+
+def waiting_phrase(count: int) -> str:
+    return "1 task waits" if count == 1 else f"{count} tasks wait"
+
+
+def settled_phrase(states: list[str]) -> str:
+    counts = [(state, states.count(state)) for state in SETTLED_ORDER]
+
+    return ", ".join(f"{count} {state}" for state, count in counts if count)
+
+
+def run_summary(ran: int, settled_before: list[str], waiting: int) -> str | None:
+    if ran == 0 and waiting == 0:
+        return (
+            f"nothing to run: every task is already settled "
+            f"({settled_phrase(settled_before)}); {RESET_HINT}"
+        )
+
+    if ran == 0:
+        return f"nothing to run: {waiting_phrase(waiting)} on a task that did not finish"
+
+    if waiting:
+        return f"{waiting_phrase(waiting)} on a task that did not finish, so it did not run"
+
+    return None
 
 
 def nodes_of(tasks: tuple[Task, ...]) -> list[Node]:
@@ -97,6 +126,7 @@ class RunLoop:
             for task_id in leaves
             if task_id in index and index[task_id].state in SETTLED_STATES
         }
+        settled_before = [index[task_id].state for task_id in attempted]
 
         while True:
             if self._halt.halted:
@@ -149,12 +179,22 @@ class RunLoop:
 
                 return
 
+        summary = None
+
+        if self.awaiting_task_id is None:
+            summary = run_summary(
+                self.tasks_completed + self.tasks_failed,
+                settled_before,
+                len(leaves - attempted),
+            )
+
         yield self._emitter.emit(
             events.run_finished(
                 self.tasks_completed,
                 self.tasks_failed,
                 self.tasks_total,
                 await self._percentage(),
+                summary,
             )
         )
 

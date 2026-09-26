@@ -92,8 +92,8 @@ def test_the_prompt_asks_for_one_claim_per_criterion() -> None:
     assert "one thing per criterion" in prompt_text()
 
 
-def test_the_service_is_configured_with_the_prompt_that_states_sql_semantics() -> None:
-    assert settings().mediator_prompt_version == "v4"
+def test_the_service_is_configured_with_the_prompt_that_plans_running_programs() -> None:
+    assert settings().mediator_prompt_version == "v5"
 
 
 def test_the_prompt_says_expect_is_the_exact_first_value() -> None:
@@ -149,3 +149,11 @@ def test_the_engine_prompt_asks_for_prose_rather_than_json() -> None:
     text = load_prompt(resolved.engine_prompt_name, resolved.engine_prompt_version).text
 
     assert text.strip()
+
+
+def test_the_prompt_says_a_program_whose_effect_is_checked_is_also_run() -> None:
+    text = prompt_text()
+
+    assert "A file that exists is not a program that has run." in text
+    assert "the task that writes the program also runs it" in text
+    assert '"Write seed.py and run it to insert three tasks", not "Create seed.py"' in text

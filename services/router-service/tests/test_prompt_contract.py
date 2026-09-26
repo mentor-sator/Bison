@@ -146,7 +146,7 @@ def test_the_prompt_says_the_machine_is_reread_on_every_plan() -> None:
 def test_the_service_is_configured_with_a_prompt_that_knows_about_the_machine() -> None:
     resolved = settings()
 
-    assert resolved.prompt_version == "v9"
+    assert resolved.prompt_version == "v10"
     assert "MACHINE" in load_prompt(resolved.prompt_name, resolved.prompt_version).text
 
 
@@ -223,3 +223,11 @@ def test_the_prompt_says_a_reserved_port_is_refused() -> None:
 
     assert "Never bind one" in text
     assert "sent back to you with the step named" in text
+
+
+def test_the_prompt_says_a_plan_runs_the_programs_its_criteria_depend_on() -> None:
+    text = prompt_text()
+
+    assert "A plan exists to make its task's criteria true." in text
+    assert "Writing a program does not make true anything the program would do" in text
+    assert "with that criterion's id in the run step's criterion_refs" in text

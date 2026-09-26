@@ -165,6 +165,7 @@ function absorb(state: RunState, event: RunEvent): RunState {
         tasksFailed: event.tasks_failed,
         tasksTotal: event.tasks_total,
         percentage: event.project_percentage,
+        detail: event.detail ?? state.detail,
       };
     case "error":
       return { ...state, phase: "finished", step: null, detail: event.detail, failed: true };

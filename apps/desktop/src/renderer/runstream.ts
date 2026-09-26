@@ -69,6 +69,7 @@ const SPECS = {
     tasks_failed: "number",
     tasks_total: "number",
     project_percentage: "number",
+    detail: "string?",
   },
   error: { task_id: "string?", detail: "string" },
 } as const satisfies Record<string, Record<string, FieldKind>>;

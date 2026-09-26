@@ -12,7 +12,12 @@ from pydantic import BaseModel, ConfigDict
 
 from router_service import router
 from router_service.actions import payload as action_payload
-from router_service.broker import BrokerClient, BrokerError, BrokerUnreachableError
+from router_service.broker import (
+    BrokerClient,
+    BrokerError,
+    BrokerTimeoutError,
+    BrokerUnreachableError,
+)
 from router_service.config import settings
 from router_service.context import RouterContext
 from router_service.gating import GatedStep, PlanRejectedError
@@ -136,6 +141,11 @@ async def handle_broker_unreachable(request: Request, exc: Exception) -> JSONRes
     return JSONResponse(
         status_code=503, content={"error": "broker_unavailable", "detail": str(exc)}
     )
+
+
+@app.exception_handler(BrokerTimeoutError)
+async def handle_broker_timeout(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=504, content={"error": "broker_timeout", "detail": str(exc)})
 
 
 @app.exception_handler(BrokerError)

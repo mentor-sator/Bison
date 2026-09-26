@@ -19,7 +19,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from mediator_service import SERVICE_NAME, decomposition, resume
-from mediator_service.broker import BrokerClient, BrokerError, BrokerUnreachableError
+from mediator_service.broker import (
+    BrokerClient,
+    BrokerError,
+    BrokerTimeoutError,
+    BrokerUnreachableError,
+)
 from mediator_service.config import settings
 from mediator_service.context import BriefFacts, MediatorContext
 from mediator_service.discipline import TreeRejectedError
@@ -202,6 +207,11 @@ async def on_broker_unreachable(request: Request, exc: BrokerUnreachableError) -
     return JSONResponse(
         status_code=503, content={"error": "broker_unreachable", "detail": str(exc)}
     )
+
+
+@app.exception_handler(BrokerTimeoutError)
+async def on_broker_timeout(request: Request, exc: BrokerTimeoutError) -> JSONResponse:
+    return JSONResponse(status_code=504, content={"error": "broker_timeout", "detail": str(exc)})
 
 
 @app.exception_handler(ProjectServiceError)

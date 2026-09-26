@@ -8,6 +8,7 @@ from typing import Any, Final, Protocol
 import httpx
 
 from mediator_service import resolve
+from mediator_service.broker import timed_out
 from mediator_service.upstream import optional_text, strings, text, whole
 
 TASK_RUNNER_SERVICE: Final[str] = "task-runner"
@@ -38,6 +39,13 @@ class RouterUnreachableError(RuntimeError):
     def __init__(self, base_url: str) -> None:
         super().__init__(f"router-service unreachable at {base_url}")
         self.base_url = base_url
+
+
+class RouterTimeoutError(RuntimeError):
+    def __init__(self, base_url: str, seconds: float) -> None:
+        super().__init__(f"router-service at {base_url} timed out after {seconds:g} s")
+        self.base_url = base_url
+        self.seconds = seconds
 
 
 class RunnerError(RuntimeError):
@@ -415,6 +423,7 @@ class RouterClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._timeout_seconds = timeout_seconds
         self._timeout = httpx.Timeout(timeout_seconds, connect=connect_timeout)
         self._client = httpx.AsyncClient(base_url=self._base_url, transport=transport)
 
@@ -429,6 +438,9 @@ class RouterClient:
                 path, params={"request_id": request_id}, timeout=self._timeout
             )
         except httpx.HTTPError as error:
+            if timed_out(error):
+                raise RouterTimeoutError(self._base_url, self._timeout_seconds) from error
+
             raise RouterUnreachableError(self._base_url) from error
 
         if response.status_code >= httpx.codes.BAD_REQUEST:

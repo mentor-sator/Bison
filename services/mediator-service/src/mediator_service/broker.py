@@ -28,6 +28,17 @@ class BrokerUnreachableError(RuntimeError):
         self.base_url = base_url
 
 
+class BrokerTimeoutError(RuntimeError):
+    def __init__(self, base_url: str, seconds: float) -> None:
+        super().__init__(f"model-broker at {base_url} timed out after {seconds:g} s")
+        self.base_url = base_url
+        self.seconds = seconds
+
+
+def timed_out(error: httpx.HTTPError) -> bool:
+    return isinstance(error, httpx.TimeoutException) and not isinstance(error, httpx.ConnectTimeout)
+
+
 class BrokerClient:
     def __init__(
         self,
@@ -37,6 +48,7 @@ class BrokerClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._timeout_seconds = timeout_seconds
         self._timeout = httpx.Timeout(timeout_seconds, connect=connect_timeout)
         self._connect_timeout = connect_timeout
         self._client = httpx.AsyncClient(base_url=self._base_url, transport=transport)
@@ -50,6 +62,9 @@ class BrokerClient:
                 f"/projects/{project_id}/bindings", timeout=self._connect_timeout
             )
         except httpx.HTTPError as error:
+            if timed_out(error):
+                raise BrokerTimeoutError(self._base_url, self._connect_timeout) from error
+
             raise BrokerUnreachableError(self._base_url) from error
 
         if response.status_code >= httpx.codes.BAD_REQUEST:
@@ -107,6 +122,9 @@ class BrokerClient:
         try:
             response = await self._client.post("/invoke", json=body, timeout=self._timeout)
         except httpx.HTTPError as error:
+            if timed_out(error):
+                raise BrokerTimeoutError(self._base_url, self._timeout_seconds) from error
+
             raise BrokerUnreachableError(self._base_url) from error
 
         if response.status_code >= httpx.codes.BAD_REQUEST:
