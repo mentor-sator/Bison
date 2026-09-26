@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     connect_timeout_seconds: float = 5.0
     invoke_timeout_seconds: float = 120.0
     local_concurrency: int = 1
+    local_context_tokens: int = 8192
+    structured_temperature: float = 0.2
     models_ttl_seconds: float = 30.0
     breaker_fail_max: int = 3
     breaker_reset_seconds: float = 30.0

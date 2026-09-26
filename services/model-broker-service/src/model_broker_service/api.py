@@ -12,7 +12,7 @@ from uuid import uuid4
 from bison_contracts import CatalogEntry, InvokeRequest, InvokeResponse, ModelDescriptor
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from model_broker_service import diskguard
@@ -117,7 +117,11 @@ def build_broker(catalog: CatalogIndex) -> ModelBroker:
     )
 
     return ModelBroker(
-        [ollama, openrouter], resolved.local_concurrency, resolved.models_ttl_seconds
+        [ollama, openrouter],
+        resolved.local_concurrency,
+        resolved.models_ttl_seconds,
+        resolved.local_context_tokens,
+        resolved.structured_temperature,
     )
 
 
@@ -226,23 +230,34 @@ async def list_models() -> list[ModelDescriptor]:
     ]
 
 
+def readable(error: ValidationError) -> str:
+    return "; ".join(
+        f"{'.'.join(str(part) for part in entry['loc'])}: {entry['msg']}"
+        for entry in error.errors()
+    )
+
+
 @app.post("/invoke")
 async def invoke(body: InvokeBody) -> InvokeResponse:
     resolved = settings()
-    broker: ModelBroker = app.state.broker
 
-    request = InvokeRequest.model_validate(
-        {
-            "request_id": body.request_id or str(uuid4()),
-            "model_id": body.model_id,
-            "engine_id": body.engine_id,
-            "role": body.role,
-            "prompt": body.prompt,
-            "mode": body.mode,
-            "schema_name": body.schema_name,
-            "timeout_ms": body.timeout_ms or int(resolved.invoke_timeout_seconds * 1000),
-        }
-    )
+    try:
+        request = InvokeRequest.model_validate(
+            {
+                "request_id": body.request_id or str(uuid4()),
+                "model_id": body.model_id,
+                "engine_id": body.engine_id,
+                "role": body.role,
+                "prompt": body.prompt,
+                "mode": body.mode,
+                "schema_name": body.schema_name,
+                "timeout_ms": body.timeout_ms or int(resolved.invoke_timeout_seconds * 1000),
+            }
+        )
+    except ValidationError as error:
+        raise HTTPException(status_code=422, detail=readable(error)) from error
+
+    broker: ModelBroker = app.state.broker
 
     try:
         return await broker.invoke(request)

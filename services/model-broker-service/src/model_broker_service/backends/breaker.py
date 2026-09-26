@@ -108,6 +108,8 @@ class CircuitBrokenBackend(ModelBackend):
         *,
         structured: bool,
         timeout_seconds: float,
+        context_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str:
         return await self._breaker.run(
             self.name,
@@ -116,6 +118,8 @@ class CircuitBrokenBackend(ModelBackend):
                 prompt,
                 structured=structured,
                 timeout_seconds=timeout_seconds,
+                context_tokens=context_tokens,
+                temperature=temperature,
             ),
         )
 

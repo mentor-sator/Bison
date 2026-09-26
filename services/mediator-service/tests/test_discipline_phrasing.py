@@ -128,3 +128,33 @@ def test_the_finding_shows_the_value_to_select_instead() -> None:
 
     assert f"such as {SUGGESTED_QUERY} with expect {SUGGESTED_EXPECT}" in findings[0]
     assert "equals expect exactly" in findings[0]
+
+
+def test_the_sql_a_criterion_quotes_is_not_read_as_two_claims() -> None:
+    statement = (
+        "In tasks.db, SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='tasks' returns tasks"
+    )
+    spec = SqlResult(
+        connection_ref="tasks.db",
+        query="SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'",
+        expect="tasks",
+    )
+
+    assert review(tree(leaf("table", checked(spec, statement)))) == ()
+
+
+def test_a_claim_joined_after_the_query_is_still_refused() -> None:
+    statement = "In tasks.db, SELECT COUNT(*) FROM tasks returns 3 and report.txt exists"
+    findings = review(tree(leaf("seed", checked(sql("3"), statement))))
+
+    assert len(findings) == 1
+    assert "joins two claims with and" in findings[0]
+
+
+def test_a_query_is_only_ignored_where_the_check_is_sql() -> None:
+    statement = "The report lists the tasks and the totals"
+    findings = review(tree(leaf("report", checked(FileExists(path="report.txt"), statement))))
+
+    assert len(findings) == 1
+    assert "joins two claims with and" in findings[0]

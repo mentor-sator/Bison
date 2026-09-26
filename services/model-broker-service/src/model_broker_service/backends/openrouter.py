@@ -72,6 +72,8 @@ class OpenRouterBackend(ModelBackend):
         *,
         structured: bool,
         timeout_seconds: float,
+        context_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str:
         self._require_key()
 
@@ -80,6 +82,9 @@ class OpenRouterBackend(ModelBackend):
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
         }
+
+        if temperature is not None:
+            body["temperature"] = temperature
 
         if structured:
             body["response_format"] = {"type": "json_object"}

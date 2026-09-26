@@ -40,8 +40,12 @@ class ModelBroker:
         backends: list[ModelBackend],
         local_concurrency: int,
         models_ttl_seconds: float,
+        local_context_tokens: int,
+        structured_temperature: float,
     ) -> None:
         self._backends = backends
+        self._local_context_tokens = local_context_tokens
+        self._structured_temperature = structured_temperature
         self._local_gate = asyncio.Semaphore(local_concurrency)
         self._models: TtlCache[list[BackendModel]] = TtlCache(models_ttl_seconds)
 
@@ -144,14 +148,25 @@ class ModelBroker:
         structured: bool,
         timeout_seconds: float,
     ) -> str:
+        temperature = self._structured_temperature if structured else None
+
         if backend.locality != "local":
             return await backend.generate(
-                model_id, prompt, structured=structured, timeout_seconds=timeout_seconds
+                model_id,
+                prompt,
+                structured=structured,
+                timeout_seconds=timeout_seconds,
+                temperature=temperature,
             )
 
         async with self._local_gate:
             return await backend.generate(
-                model_id, prompt, structured=structured, timeout_seconds=timeout_seconds
+                model_id,
+                prompt,
+                structured=structured,
+                timeout_seconds=timeout_seconds,
+                context_tokens=self._local_context_tokens,
+                temperature=temperature,
             )
 
     async def _models_for(self, backend: ModelBackend) -> list[BackendModel]:

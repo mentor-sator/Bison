@@ -49,8 +49,21 @@ class OllamaBackend(ModelBackend):
         *,
         structured: bool,
         timeout_seconds: float,
+        context_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str:
+        options: dict[str, Any] = {}
+
+        if context_tokens is not None:
+            options["num_ctx"] = context_tokens
+
+        if temperature is not None:
+            options["temperature"] = temperature
+
         body: dict[str, Any] = {"model": model_id, "prompt": prompt, "stream": False}
+
+        if options:
+            body["options"] = options
 
         if structured:
             body["format"] = "json"

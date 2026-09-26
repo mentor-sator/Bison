@@ -134,6 +134,11 @@ COMPOUND: Final[frozenset[str]] = frozenset({"and", "then", "as well as", "along
 PATH_PHRASE: Final[re.Pattern[str]] = re.compile(r"\bworking (directory|folder|dir|tree)\b")
 NEUTRAL_PATH: Final[str] = "workspace"
 
+SQL_SPAN: Final[re.Pattern[str]] = re.compile(
+    r"\bselect\b.*?(?=\breturns\b|\bequals\b|\byields\b|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
 COMPARISON: Final[re.Pattern[str]] = re.compile(
     r"[<>=!]|\brow_?count\b|\brows?\b|\b(at least|at most|more than|fewer than|less than|"
     r"greater than|non-?empty|not empty|exists|present|any)\b",
@@ -163,6 +168,13 @@ def normalise(statement: str) -> str:
 
 def neutralised(text: str) -> str:
     return PATH_PHRASE.sub(NEUTRAL_PATH, text)
+
+
+def without_sql(criterion: DraftCriterion) -> str:
+    if not isinstance(criterion.check_spec, SqlResult):
+        return criterion.statement
+
+    return SQL_SPAN.sub(" ", criterion.statement)
 
 
 def first_match(text: str, phrases: frozenset[str]) -> str | None:
@@ -265,7 +277,7 @@ def spec_findings(criterion: DraftCriterion, label: str) -> list[str]:
 
 def criterion_findings(task: DraftTask, criterion: DraftCriterion, index: int) -> list[str]:
     label = f"task {task.ref} criterion {index}"
-    text = normalise(criterion.statement)
+    text = normalise(without_sql(criterion))
     collected: list[str] = []
 
     unexpressible = first_match(text, UNEXPRESSIBLE)

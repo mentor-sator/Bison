@@ -56,6 +56,8 @@ class ModelBackend(ABC):
         *,
         structured: bool,
         timeout_seconds: float,
+        context_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str: ...
 
     @abstractmethod
