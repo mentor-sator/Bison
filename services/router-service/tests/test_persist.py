@@ -106,7 +106,7 @@ def test_effects_survive_whole() -> None:
     declared = effects(writes_paths=["ledger.db"], network=True, reversible=False)
     entry = plan_payload(run(step(effects=declared)), REQUEST, SCOPE)["steps"][0]
 
-    assert entry["effects"]["writes_paths"] == ["ledger.db"]
+    assert entry["effects"]["writes_paths"] == [rf"{SCOPE}\ledger.db"]
     assert entry["effects"]["network"] is True
     assert entry["effects"]["reversible"] is False
 

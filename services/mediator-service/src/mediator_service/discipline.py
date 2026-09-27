@@ -239,7 +239,16 @@ def unliteral(spec: CheckSpec) -> str | None:
     return spec.expect if COMPARISON.search(spec.expect) is not None else None
 
 
-def spec_findings(criterion: DraftCriterion, label: str) -> list[str]:
+def invented_digest(spec: CheckSpec, supplied: str) -> str | None:
+    if not isinstance(spec, FileHash):
+        return None
+
+    digest = spec.expected_sha256.strip().casefold()
+
+    return None if digest and digest in supplied.casefold() else spec.expected_sha256
+
+
+def spec_findings(criterion: DraftCriterion, label: str, supplied: str = "") -> list[str]:
     spec = criterion.check_spec
 
     if spec is None:
@@ -263,6 +272,15 @@ def spec_findings(criterion: DraftCriterion, label: str) -> list[str]:
             "there instead"
         )
 
+    digest = invented_digest(spec, supplied)
+
+    if digest is not None:
+        collected.append(
+            f"{label} expects the digest {digest[:12]}..., which nothing in the brief supplies; "
+            "the digest of a file nobody has written yet cannot be known when the tree is "
+            "built, so check that the file exists, or check a result it produces when it runs"
+        )
+
     expected = unliteral(spec)
 
     if expected is not None:
@@ -275,7 +293,9 @@ def spec_findings(criterion: DraftCriterion, label: str) -> list[str]:
     return collected
 
 
-def criterion_findings(task: DraftTask, criterion: DraftCriterion, index: int) -> list[str]:
+def criterion_findings(
+    task: DraftTask, criterion: DraftCriterion, index: int, supplied: str = ""
+) -> list[str]:
     label = f"task {task.ref} criterion {index}"
     text = normalise(without_sql(criterion))
     collected: list[str] = []
@@ -313,7 +333,7 @@ def criterion_findings(task: DraftTask, criterion: DraftCriterion, index: int) -
                 "deterministic with a check_spec"
             )
 
-    collected.extend(spec_findings(criterion, label))
+    collected.extend(spec_findings(criterion, label, supplied))
 
     return collected
 
@@ -366,7 +386,7 @@ def parent_findings(task: DraftTask) -> list[str]:
     ]
 
 
-def review(draft: TreeDraft) -> tuple[str, ...]:
+def review(draft: TreeDraft, supplied: str = "") -> tuple[str, ...]:
     leaves = leaf_refs(draft)
     collected: list[str] = []
 
@@ -379,13 +399,13 @@ def review(draft: TreeDraft) -> tuple[str, ...]:
         collected.extend(duplicate_findings(task))
 
         for index, criterion in enumerate(task.criteria):
-            collected.extend(criterion_findings(task, criterion, index))
+            collected.extend(criterion_findings(task, criterion, index, supplied))
 
     return tuple(collected[:MAX_FINDINGS])
 
 
-def assert_disciplined(draft: TreeDraft) -> None:
-    findings = review(draft)
+def assert_disciplined(draft: TreeDraft, supplied: str = "") -> None:
+    findings = review(draft, supplied)
 
     if findings:
         raise TreeRejectedError(findings)

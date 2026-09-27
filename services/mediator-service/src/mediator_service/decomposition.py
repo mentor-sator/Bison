@@ -6,7 +6,7 @@ from typing import Final
 from bison_contracts import load_prompt
 
 from mediator_service.broker import ENGINE_ROLE, MEDIATOR_ROLE, BrokerClient
-from mediator_service.context import MediatorContext, render
+from mediator_service.context import BriefFacts, MediatorContext, render
 from mediator_service.discipline import TreeRejectedError, assert_disciplined
 from mediator_service.sequencing import Node, Ordering, SequencingError, build
 from mediator_service.tree import MediatorParseError, TreeDraft, parse
@@ -61,6 +61,19 @@ def failures(error: MediatorParseError | TreeRejectedError | SequencingError) ->
     return (error.detail,)
 
 
+def brief_text(brief: BriefFacts) -> str:
+    return "\n".join(
+        [
+            brief.interpreted_goal,
+            brief.summary,
+            *brief.known_constraints,
+            *brief.assumptions,
+            *brief.out_of_scope,
+            *brief.seeded_success_criteria,
+        ]
+    )
+
+
 def nodes(draft: TreeDraft) -> list[Node]:
     return [
         Node(
@@ -101,6 +114,7 @@ async def run(
         timeout_ms,
     )
 
+    supplied = brief_text(context.brief)
     rendered = render(context, budget_chars, approach)
     composed = compose(mediator_prompt.text, rendered, CLOSING_INSTRUCTION)
 
@@ -116,7 +130,7 @@ async def run(
 
         try:
             draft = parse(answer)
-            assert_disciplined(draft)
+            assert_disciplined(draft, supplied)
             ordering = build(nodes(draft))
         except (MediatorParseError, TreeRejectedError, SequencingError) as error:
             failure = error

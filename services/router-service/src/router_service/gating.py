@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import ast
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path, PureWindowsPath
 from typing import Final, Literal
@@ -18,7 +19,9 @@ from router_service.actions import (
     required_paths,
     written_paths,
 )
+from router_service.context import Criterion, WorkspaceFile
 from router_service.plan import Effects, ProposedStep, RouterDraft
+from router_service.workspace import defined_names
 
 SAFE_FAILURE_POLICY = "abort"
 MAX_PATHS_NAMED = 3
@@ -60,6 +63,12 @@ PORT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 )
 
 PORT_NUMBER: Final[re.Pattern[str]] = re.compile(r"\d{2,5}")
+
+PYTHON_SUFFIX: Final[str] = ".py"
+DETERMINISTIC: Final[str] = "deterministic"
+SETTLED_CRITERIA: Final[frozenset[str]] = frozenset({"verified", "ignored"})
+DATABASE_CHECKS: Final[frozenset[str]] = frozenset({"sql_result"})
+FILE_CHECKS: Final[frozenset[str]] = frozenset({"file_exists", "file_hash"})
 
 Disk = Callable[[str], Presence]
 
@@ -511,11 +520,201 @@ def sequence(draft: RouterDraft, root: list[str], disk: Disk) -> None:
     raise PlanRejectedError(f"the plan uses files out of order: {named}{tail}")
 
 
+def anchored_path(path: str, scope_root: str) -> str:
+    candidate = PureWindowsPath(path)
+
+    if not path.strip() or candidate.is_absolute():
+        return path
+
+    return str(PureWindowsPath(scope_root) / candidate)
+
+
+def anchored_action(action: Action | None, scope_root: str) -> Action | None:
+    if isinstance(action, WriteFile):
+        return replace(action, path=anchored_path(action.path, scope_root))
+
+    if isinstance(action, RunPythonScript):
+        return replace(action, script_path=anchored_path(action.script_path, scope_root))
+
+    if isinstance(action, OpenInEditor):
+        return replace(action, path=anchored_path(action.path, scope_root))
+
+    return action
+
+
+def anchored_step(step: ProposedStep, scope_root: str) -> ProposedStep:
+    effects = replace(
+        step.effects,
+        writes_paths=[anchored_path(path, scope_root) for path in step.effects.writes_paths],
+        deletes_paths=[anchored_path(path, scope_root) for path in step.effects.deletes_paths],
+    )
+
+    return replace(step, action=anchored_action(step.action, scope_root), effects=effects)
+
+
+def anchored(draft: RouterDraft, scope_root: str) -> RouterDraft:
+    steps = [anchored_step(step, scope_root) for step in draft.steps]
+
+    return draft if steps == draft.steps else replace(draft, steps=steps)
+
+
+def syntax_fault(content: str) -> str | None:
+    try:
+        ast.parse(content)
+    except SyntaxError as error:
+        where = f" on line {error.lineno}" if error.lineno else ""
+
+        return f"{error.msg}{where}"
+    except ValueError as error:
+        return str(error)
+
+    return None
+
+
+def defined_on_disk(
+    workspace: Sequence[WorkspaceFile], root: list[str]
+) -> dict[tuple[str, ...], list[str]]:
+    mapping: dict[tuple[str, ...], list[str]] = {}
+
+    for entry in workspace:
+        key = identity(entry.path, root)
+
+        if key is not None and entry.names:
+            mapping[key] = list(entry.names)
+
+    return mapping
+
+
+def broken_python(
+    draft: RouterDraft, root: list[str], workspace: Sequence[WorkspaceFile]
+) -> list[str]:
+    existing = defined_on_disk(workspace, root)
+    problems: list[str] = []
+
+    for position, step in enumerate(draft.steps):
+        action = step.action
+
+        if not isinstance(action, WriteFile):
+            continue
+
+        if PureWindowsPath(action.path).suffix.lower() != PYTHON_SUFFIX:
+            continue
+
+        fault = syntax_fault(action.content)
+
+        if fault is not None:
+            problems.append(
+                f"steps[{position}] writes {action.path}, which is not valid Python: {fault}"
+            )
+            continue
+
+        key = identity(action.path, root)
+        before = existing.get(key, []) if key is not None else []
+        after = set(defined_names(action.content))
+        dropped = [name for name in before if name not in after]
+
+        if dropped:
+            problems.append(
+                f"steps[{position}] rewrites {action.path} without {', '.join(dropped)}, "
+                "which the file defines now"
+            )
+
+    return problems
+
+
+def code_intact(draft: RouterDraft, root: list[str], workspace: Sequence[WorkspaceFile]) -> None:
+    problems = broken_python(draft, root, workspace)
+
+    if not problems:
+        return
+
+    named = "; ".join(problems[:MAX_PROBLEMS_NAMED])
+    remaining = len(problems) - min(len(problems), MAX_PROBLEMS_NAMED)
+    tail = f"; and {remaining} more" if remaining > 0 else ""
+
+    raise PlanRejectedError(
+        f"the plan writes Python that would break the project: {named}{tail}. A write replaces "
+        "the whole file, so its content must be valid Python and must keep every name the file "
+        "already defines"
+    )
+
+
+def run_refs(draft: RouterDraft) -> set[str]:
+    return {
+        reference
+        for step in draft.steps
+        if isinstance(step.action, RunPythonScript | RunPythonModule)
+        for reference in step.criterion_refs
+    }
+
+
+def unobserved(
+    draft: RouterDraft, root: list[str], criteria: Sequence[Criterion], disk: Disk
+) -> list[str]:
+    writers = first_writers(draft, root)
+    ran = run_refs(draft)
+    problems: list[str] = []
+
+    for criterion in criteria:
+        if criterion.status in SETTLED_CRITERIA or criterion.check_kind != DETERMINISTIC:
+            continue
+
+        if criterion.criterion_id in ran:
+            continue
+
+        kind = criterion.check_type
+        target = criterion.check_target
+
+        if kind in DATABASE_CHECKS:
+            problems.append(
+                f"criterion {criterion.criterion_id} checks {target or 'a database'}, "
+                "which changes only when a program runs"
+            )
+            continue
+
+        if kind not in FILE_CHECKS or target is None:
+            continue
+
+        key = identity(target, root)
+
+        if key is None or key in writers or disk(str(absolute(target, root))) == "file":
+            continue
+
+        problems.append(
+            f"criterion {criterion.criterion_id} checks {target}, which no step writes, "
+            "so only a program that runs can produce it"
+        )
+
+    return problems
+
+
+def effects_observed(
+    draft: RouterDraft, root: list[str], criteria: Sequence[Criterion], disk: Disk
+) -> None:
+    problems = unobserved(draft, root, criteria, disk)
+
+    if not problems:
+        return
+
+    named = "; ".join(problems[:MAX_PROBLEMS_NAMED])
+    remaining = len(problems) - min(len(problems), MAX_PROBLEMS_NAMED)
+    tail = f"; and {remaining} more" if remaining > 0 else ""
+
+    raise PlanRejectedError(
+        f"the plan never runs the program its criteria depend on: {named}{tail}. Add a "
+        "run_python_script or run_python_module step after the step that writes the program, "
+        "and list each of these criterion ids in that run step's criterion_refs"
+    )
+
+
 def build(
     draft: RouterDraft,
     scope_root: str,
     criterion_ids: list[str],
     disk: Disk = on_disk,
+    *,
+    criteria: Sequence[Criterion] = (),
+    workspace: Sequence[WorkspaceFile] = (),
 ) -> GatedPlan:
     root = normalise(PureWindowsPath(scope_root))
 
@@ -532,12 +731,14 @@ def build(
     if known and not any(step.criterion_refs for step in draft.steps):
         raise PlanRejectedError("the plan advances none of this task's acceptance criteria")
 
-    installing = installed_through_the_runner(draft)
+    installing = installed_through_the_runner(anchored(draft, scope_root))
 
     environment_left_alone(installing)
     ports_left_free(installing)
     ordered = settled(installing, root)
     sequence(ordered, root, disk)
+    code_intact(ordered, root, workspace)
+    effects_observed(ordered, root, criteria, disk)
 
     steps = [gate(step, position, root) for position, step in enumerate(ordered.steps)]
 

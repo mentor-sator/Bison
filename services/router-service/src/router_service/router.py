@@ -67,7 +67,13 @@ async def run(
         answer = await client.invoke(model_id, instruction, request_id, timeout_ms)
 
         try:
-            gated = build(parse(answer), context.scope_root, known)
+            gated = build(
+                parse(answer),
+                context.scope_root,
+                known,
+                criteria=context.criteria,
+                workspace=context.workspace,
+            )
         except (RouterParseError, PlanRejectedError) as error:
             failure = error
             continue

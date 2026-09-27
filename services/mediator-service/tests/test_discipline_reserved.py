@@ -90,7 +90,7 @@ def test_an_address_whose_port_cannot_be_read_is_left_to_the_inspector() -> None
     ],
 )
 def test_a_check_inside_a_virtual_environment_is_rejected(spec: CheckSpec) -> None:
-    findings = review(tree(checked(spec)))
+    findings = review(tree(checked(spec)), "a" * 64)
 
     assert len(findings) == 1
     assert "inside a virtual environment" in findings[0]

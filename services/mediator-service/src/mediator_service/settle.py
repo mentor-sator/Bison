@@ -16,6 +16,9 @@ from mediator_service.upstream import Criterion
 
 VERIFIED: Final[str] = "verified"
 FAILED: Final[str] = "failed"
+IGNORED: Final[str] = "ignored"
+
+LEFT_IGNORED: Final[str] = "the user ignored this criterion, so no run settles it"
 
 NO_EVIDENCE: Final[str] = "no step in this task produced evidence for this criterion"
 
@@ -123,6 +126,9 @@ def judge(spec: CheckSpec, result: Result, scope_root: str) -> tuple[str | None,
 
 
 def verdict(criterion: Criterion, results: tuple[Result, ...], scope_root: str) -> Verdict:
+    if criterion.status == IGNORED:
+        return Verdict(criterion.id, None, LEFT_IGNORED)
+
     if not criterion.mechanisable:
         return Verdict(criterion.id, None, "this criterion is not a deterministic check")
 

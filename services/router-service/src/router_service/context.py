@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 MAX_STATEMENT_CHARS = 500
 MAX_DESCRIPTION_CHARS = 4000
@@ -29,6 +30,26 @@ class Criterion:
     statement: str
     check_kind: str
     status: str
+    check_spec: dict[str, Any] | None = None
+
+    @property
+    def check_type(self) -> str | None:
+        kind = self.check_spec.get("type") if self.check_spec is not None else None
+
+        return kind if isinstance(kind, str) else None
+
+    @property
+    def check_target(self) -> str | None:
+        if self.check_spec is None:
+            return None
+
+        for key in ("path", "connection_ref"):
+            value = self.check_spec.get(key)
+
+            if isinstance(value, str) and value.strip():
+                return value
+
+        return None
 
 
 @dataclass(frozen=True)
@@ -102,10 +123,24 @@ def bullets(values: list[str]) -> list[str]:
     return [f"- {clip(value, MAX_NOTE_CHARS)}" for value in values if value.strip()]
 
 
+def render_check(criterion: Criterion) -> str:
+    kind = criterion.check_type
+
+    if kind is None:
+        return ""
+
+    target = criterion.check_target
+
+    return f" (checked by {kind} on {target})" if target else f" (checked by {kind})"
+
+
 def render_criterion(criterion: Criterion) -> str:
     statement = clip(criterion.statement, MAX_STATEMENT_CHARS)
+    check = render_check(criterion)
 
-    return f"- {criterion.criterion_id} [{criterion.status}/{criterion.check_kind}] {statement}"
+    return (
+        f"- {criterion.criterion_id} [{criterion.status}/{criterion.check_kind}] {statement}{check}"
+    )
 
 
 def render_history(entry: HistoryEntry) -> str:

@@ -76,11 +76,14 @@ def to_history(payload: dict[str, Any]) -> HistoryEntry:
 
 
 def to_criterion(payload: dict[str, Any]) -> Criterion:
+    spec = payload.get("check_spec")
+
     return Criterion(
         criterion_id=text(payload, "id"),
         statement=text(payload, "statement"),
         check_kind=text(payload, "check_kind"),
         status=text(payload, "status"),
+        check_spec=spec if isinstance(spec, dict) else None,
     )
 
 
