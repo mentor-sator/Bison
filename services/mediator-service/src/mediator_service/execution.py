@@ -29,6 +29,7 @@ from mediator_service.dispatch import (
     UnroutableStepError,
 )
 from mediator_service.events import Emitter
+from mediator_service.inspection import FAILED as REFUTED
 from mediator_service.inspection import INSPECTION_FAILURES, Inspection, InspectorClient
 from mediator_service.persist import ProjectServiceError, ProjectServiceUnreachableError
 from mediator_service.resolve import UnrunnableActionError
@@ -63,6 +64,8 @@ NOT_RUN: Final[str] = "the task pass did not complete"
 NO_RESULT: Final[str] = "the runner closed the stream without reporting a result"
 HALT_REASON: Final[str] = "the run was halted before this step"
 NEEDS_CONFIRMATION: Final[str] = "this step needs confirmation"
+
+CRITERION_FAILED: Final[str] = "failed"
 
 UPSTREAM_FAILURES: Final[tuple[type[Exception], ...]] = (
     DevEnvError,
@@ -151,6 +154,33 @@ def step_reason(result: Result) -> str | None:
     return f"the step exited with code {result.exit_code}"
 
 
+def unmet(statement: str, detail: str) -> str:
+    return f"criterion {statement!r} failed: {detail}"
+
+
+def unmet_reason(unmet_criteria: list[str]) -> str | None:
+    if not unmet_criteria:
+        return None
+
+    remaining = len(unmet_criteria) - 1
+    tail = f" (and {remaining} more)" if remaining > 0 else ""
+
+    return f"{unmet_criteria[0]}{tail}"
+
+
+def refuted_by(inspection: Inspection | None) -> str | None:
+    if inspection is None:
+        return None
+
+    return unmet_reason(
+        [
+            unmet(verdict.statement, verdict.reasoning)
+            for verdict in inspection.verdicts
+            if verdict.verdict == REFUTED
+        ]
+    )
+
+
 def outcome_of(step: Step, result: Result) -> Outcome:
     return Outcome(
         step_id=step.step_id,
@@ -191,6 +221,7 @@ class TaskPass:
         self._outcomes: list[Outcome] = []
         self._exit = WALK_ENDED
         self._failure: str | None = None
+        self._unmet: list[str] = []
         self.replans = 0
         self.state = FAILED
         self.reason: str | None = NOT_RUN
@@ -276,8 +307,9 @@ class TaskPass:
         async for chunk in self._criteria(plan):
             yield chunk
 
-        self.state = FAILED if self._failure is not None else COMPLETED
-        self.reason = self._failure
+        failure = self._failure or unmet_reason(self._unmet)
+        self.state = FAILED if failure is not None else COMPLETED
+        self.reason = failure
 
     async def _steps(self, plan: Plan, confirmed_step_id: str | None) -> AsyncIterator[bytes]:
         self._exit = WALK_ENDED
@@ -452,6 +484,9 @@ class TaskPass:
                 entry.criterion_id, entry.status, entry.detail
             )
 
+            if entry.status == CRITERION_FAILED:
+                self._unmet.append(unmet(statements.get(entry.criterion_id, ""), entry.detail))
+
             yield self._emitter.emit(
                 events.criterion_settled(
                     self._task.id,
@@ -468,6 +503,15 @@ class TaskPass:
 
             async for chunk in self._inspect():
                 yield chunk
+
+            refuted = refuted_by(self.inspection)
+
+            if refuted is not None:
+                self.state = FAILED
+                self.reason = refuted
+                await self._clients.project.move_task(self._task.id, TASK_FAILED, refuted)
+
+                return
 
             await self._clients.project.move_task(self._task.id, DONE, None)
 

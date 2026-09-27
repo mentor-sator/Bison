@@ -171,7 +171,7 @@ async def test_the_inspector_is_asked_while_the_task_is_verifying() -> None:
     ran = await inspected_pass()
 
     assert ran.watch.states_when_asked == [["in_progress", "verifying"]]
-    assert ran.task_states() == ["in_progress", "verifying", "done"]
+    assert ran.task_states() == ["in_progress", "verifying", "failed"]
 
 
 async def test_the_verdict_counts_reach_the_stream() -> None:
@@ -210,7 +210,7 @@ async def test_the_pass_keeps_the_inspection_it_received() -> None:
 
     assert ran.run.inspection is not None
     assert ran.run.inspection.failed == 1
-    assert ran.run.state == COMPLETED
+    assert ran.run.state == FAILED
 
 
 async def test_an_unreachable_inspector_is_reported_and_the_task_still_finishes() -> None:

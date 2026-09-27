@@ -70,7 +70,28 @@ SETTLED_CRITERIA: Final[frozenset[str]] = frozenset({"verified", "ignored"})
 DATABASE_CHECKS: Final[frozenset[str]] = frozenset({"sql_result"})
 FILE_CHECKS: Final[frozenset[str]] = frozenset({"file_exists", "file_hash"})
 
+ARGUMENT_READERS: Final[tuple[str, ...]] = (
+    "sys.argv",
+    "argparse",
+    "getopt",
+    "optparse",
+    "click",
+    "typer",
+    "fire",
+)
+PLACEHOLDER_DECORATORS: Final[frozenset[str]] = frozenset({"abstractmethod", "overload"})
+PROTOCOL_BASES: Final[frozenset[str]] = frozenset({"Protocol", "ABC"})
+DECLARATIVE: Final[tuple[type[ast.stmt], ...]] = (
+    ast.Import,
+    ast.ImportFrom,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Pass,
+)
+
 Disk = Callable[[str], Presence]
+Reader = Callable[[str], str | None]
 
 
 class PlanRejectedError(RuntimeError):
@@ -241,6 +262,15 @@ def on_disk(path: str) -> Presence:
         return "folder"
 
     return "missing"
+
+
+def read_text(path: str) -> str | None:
+    candidate = Path(path)
+
+    try:
+        return candidate.read_text(encoding="utf-8") if candidate.is_file() else None
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 def absolute(path: str, root: list[str]) -> PureWindowsPath:
@@ -622,8 +652,97 @@ def broken_python(
     return problems
 
 
+def decorator_name(node: ast.expr) -> str:
+    target = node.func if isinstance(node, ast.Call) else node
+
+    if isinstance(target, ast.Attribute):
+        return target.attr
+
+    return target.id if isinstance(target, ast.Name) else ""
+
+
+def base_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+
+    return node.id if isinstance(node, ast.Name) else ""
+
+
+def placeholder_statement(statement: ast.stmt) -> bool:
+    if isinstance(statement, ast.Pass):
+        return True
+
+    if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+        return True
+
+    if isinstance(statement, ast.Raise) and statement.exc is not None:
+        raised = statement.exc.func if isinstance(statement.exc, ast.Call) else statement.exc
+
+        return isinstance(raised, ast.Name) and raised.id == "NotImplementedError"
+
+    return False
+
+
+def placeholder_body(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    if any(decorator_name(entry) in PLACEHOLDER_DECORATORS for entry in function.decorator_list):
+        return False
+
+    return all(placeholder_statement(statement) for statement in function.body)
+
+
+def functions_of(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    found: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            found.append(node)
+        elif isinstance(node, ast.ClassDef):
+            if any(base_name(base) in PROTOCOL_BASES for base in node.bases):
+                continue
+
+            found.extend(
+                member
+                for member in node.body
+                if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef)
+            )
+
+    return found
+
+
+def placeholders(content: str) -> list[str]:
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError):
+        return []
+
+    return [function.name for function in functions_of(tree) if placeholder_body(function)]
+
+
+def hollow_python(draft: RouterDraft) -> list[str]:
+    problems: list[str] = []
+
+    for position, step in enumerate(draft.steps):
+        action = step.action
+
+        if not isinstance(action, WriteFile):
+            continue
+
+        if PureWindowsPath(action.path).suffix.lower() != PYTHON_SUFFIX:
+            continue
+
+        empty = placeholders(action.content)
+
+        if empty:
+            problems.append(
+                f"steps[{position}] writes {action.path} with {', '.join(empty)} left as "
+                "placeholders that do nothing"
+            )
+
+    return problems
+
+
 def code_intact(draft: RouterDraft, root: list[str], workspace: Sequence[WorkspaceFile]) -> None:
-    problems = broken_python(draft, root, workspace)
+    problems = broken_python(draft, root, workspace) + hollow_python(draft)
 
     if not problems:
         return
@@ -634,9 +753,168 @@ def code_intact(draft: RouterDraft, root: list[str], workspace: Sequence[Workspa
 
     raise PlanRejectedError(
         f"the plan writes Python that would break the project: {named}{tail}. A write replaces "
-        "the whole file, so its content must be valid Python and must keep every name the file "
-        "already defines"
+        "the whole file, so its content must be valid Python, must keep every name the file "
+        "already defines, and every function must do the work it is named for"
     )
+
+
+def main_guard(statement: ast.stmt) -> bool:
+    if not isinstance(statement, ast.If):
+        return False
+
+    test = statement.test
+
+    if not isinstance(test, ast.Compare) or len(test.comparators) != 1:
+        return False
+
+    sides = [test.left, test.comparators[0]]
+    names = [side.id for side in sides if isinstance(side, ast.Name)]
+    values = [side.value for side in sides if isinstance(side, ast.Constant)]
+
+    return names == ["__name__"] and values == ["__main__"]
+
+
+def calls_something(node: ast.AST) -> bool:
+    return any(isinstance(child, ast.Call) for child in ast.walk(node))
+
+
+def acts(statement: ast.stmt) -> bool:
+    if isinstance(statement, DECLARATIVE):
+        return False
+
+    if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+        return False
+
+    if isinstance(statement, ast.Assign | ast.AnnAssign):
+        value = statement.value
+
+        return value is not None and calls_something(value)
+
+    return True
+
+
+def inert(content: str) -> bool:
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError):
+        return False
+
+    return not any(main_guard(statement) or acts(statement) for statement in tree.body)
+
+
+def reads_arguments(content: str) -> bool:
+    return any(reader in content for reader in ARGUMENT_READERS)
+
+
+def script_source(
+    draft: RouterDraft, position: int, path: str, root: list[str], read: Reader
+) -> str | None:
+    key = identity(path, root)
+    written: str | None = None
+
+    for earlier in draft.steps[:position]:
+        action = earlier.action
+
+        if isinstance(action, WriteFile) and identity(action.path, root) == key:
+            written = action.content
+
+    if written is not None:
+        return written
+
+    return read(str(absolute(path, root)))
+
+
+def idle_runs(draft: RouterDraft, root: list[str], read: Reader) -> list[str]:
+    problems: list[str] = []
+
+    for position, step in enumerate(draft.steps):
+        action = step.action
+
+        if not isinstance(action, RunPythonScript):
+            continue
+
+        source = script_source(draft, position, action.script_path, root, read)
+
+        if source is None:
+            continue
+
+        if inert(source):
+            problems.append(
+                f"steps[{position}] runs {action.script_path}, which only defines names and has "
+                "no if __name__ == '__main__' block, so running it does nothing"
+            )
+            continue
+
+        if action.arguments and not reads_arguments(source):
+            problems.append(
+                f"steps[{position}] passes {' '.join(action.arguments)} to "
+                f"{action.script_path}, which never reads its arguments"
+            )
+
+    return problems
+
+
+def runs_effective(draft: RouterDraft, root: list[str], read: Reader) -> None:
+    problems = idle_runs(draft, root, read)
+
+    if not problems:
+        return
+
+    named = "; ".join(problems[:MAX_PROBLEMS_NAMED])
+    remaining = len(problems) - min(len(problems), MAX_PROBLEMS_NAMED)
+    tail = f"; and {remaining} more" if remaining > 0 else ""
+
+    raise PlanRejectedError(
+        f"the plan runs programs that cannot do what it runs them for: {named}{tail}. A script "
+        "that is run must act when run, through an if __name__ == '__main__' block or statements "
+        "at its top level, and must read any arguments it is given; write that into the script "
+        "in an earlier step, or run a script that already does it"
+    )
+
+
+def fresh_write(
+    step: ProposedStep,
+    position: int,
+    root: list[str],
+    disk: Disk,
+    writers: dict[tuple[str, ...], int],
+) -> bool:
+    action = step.action
+    effects = step.effects
+
+    if not isinstance(action, WriteFile):
+        return False
+
+    if effects.deletes_paths or effects.network or effects.installs_packages:
+        return False
+
+    if effects.needs_credentials or effects.drives_input:
+        return False
+
+    paths = list(dict.fromkeys(step_writes(step)))
+
+    for path in paths:
+        key = identity(path, root)
+
+        if key is None or not within(path, root) or writers.get(key) != position:
+            return False
+
+        if disk(str(absolute(path, root))) != "missing":
+            return False
+
+    return bool(paths)
+
+
+def undoable(draft: RouterDraft, root: list[str], disk: Disk) -> RouterDraft:
+    writers = first_writers(draft, root)
+    steps = [
+        replace(step, effects=replace(step.effects, reversible=True))
+        if not step.effects.reversible and fresh_write(step, position, root, disk, writers)
+        else step
+        for position, step in enumerate(draft.steps)
+    ]
+
+    return draft if steps == draft.steps else replace(draft, steps=steps)
 
 
 def run_refs(draft: RouterDraft) -> set[str]:
@@ -715,6 +993,7 @@ def build(
     *,
     criteria: Sequence[Criterion] = (),
     workspace: Sequence[WorkspaceFile] = (),
+    read: Reader = read_text,
 ) -> GatedPlan:
     root = normalise(PureWindowsPath(scope_root))
 
@@ -738,13 +1017,15 @@ def build(
     ordered = settled(installing, root)
     sequence(ordered, root, disk)
     code_intact(ordered, root, workspace)
+    runs_effective(ordered, root, read)
     effects_observed(ordered, root, criteria, disk)
+    trusted = undoable(ordered, root, disk)
 
-    steps = [gate(step, position, root) for position, step in enumerate(ordered.steps)]
+    steps = [gate(step, position, root) for position, step in enumerate(trusted.steps)]
 
     return GatedPlan(
-        intent=ordered.intent,
-        rationale=ordered.rationale,
+        intent=trusted.intent,
+        rationale=trusted.rationale,
         steps=steps,
         gated_count=sum(1 for step in steps if step.requires_confirmation),
     )
